@@ -20,4 +20,6 @@ urlpatterns = [
     path("rtstruct/extract/", views.rtstruct_extract, name="rtstruct_extract"),
     path("rois/", views.roi_list, name="roi_list"),
     path("rois/<int:series_id>/", views.roi_detail, name="roi_detail"),
+    path("nifti/convert/", views.nifti_convert, name="nifti_convert"),
+    path("nifti/", views.nifti_list, name="nifti_list"),
 ]

@@ -92,3 +92,4 @@ venv/
 dicom_files/
 *.dcm
 media/dicom_zip_files/
+media/nifti_files/

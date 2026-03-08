@@ -7,6 +7,9 @@
     <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left me-1"></i>Back to Home
     </a>
+    <a href="{% url 'nifti_list' %}" class="btn btn-outline-info btn-sm ms-2">
+        <i class="bi bi-file-earmark-zip me-1"></i>View NIfTI Files
+    </a>
 </div>
 
 <div class="card shadow">
@@ -19,74 +22,117 @@
     <div class="card-body">
         {% if series_with_rtstructs %}
         
-        {% for item in series_with_rtstructs %}
-        <div class="card mb-4">
-            <!-- Referenced Image Series (CT) Header -->
-            <div class="card-header bg-light">
-                <div class="row align-items-center">
-                    <div class="col-md-4">
-                        <h5 class="mb-0">
-                            <i class="bi bi-image me-2 text-primary"></i>
-                            <strong>Image Series</strong>
-                        </h5>
-                        <small class="text-muted">Patient: {{ item.referenced_series.study.patient.patient_id }}</small>
-                        {% if item.referenced_series.study.patient.patient_name %}
-                        <br><small class="text-muted">{{ item.referenced_series.study.patient.patient_name }}</small>
-                        {% endif %}
-                    </div>
-                    <div class="col-md-5">
-                        <code>{{ item.referenced_series.series_instance_uid|truncatechars:40 }}</code>
-                        <br><small class="text-muted">Modality: <span class="badge bg-secondary">{{ item.referenced_series.modality|default:"Unknown" }}</span></small>
-                    </div>
-                    <div class="col-md-3 text-end">
-                        <span class="badge bg-info">{{ item.rtstruct_series|length }} RT Struct{{ item.rtstruct_series|length|pluralize }}</span>
-                    </div>
+        <!-- NIfTI Conversion Form -->
+        <form id="niftiForm" method="post" action="{% url 'nifti_convert' %}">
+            {% csrf_token %}
+            
+            <div class="mb-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <button type="button" id="selectAllBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-check-all me-1"></i>Select All
+                    </button>
+                    <button type="button" id="deselectAllBtn" class="btn btn-outline-secondary btn-sm ms-2">
+                        <i class="bi bi-x-square me-1"></i>Deselect All
+                    </button>
+                </div>
+                <div>
+                    <span id="selectedCount" class="badge bg-secondary me-2">0 selected</span>
+                    <button type="submit" id="convertBtn" class="btn btn-success btn-sm" disabled>
+                        <i class="bi bi-file-earmark-zip me-1"></i>Convert to NIfTI
+                    </button>
                 </div>
             </div>
             
-            <!-- RTStruct Series that reference this image series -->
-            <div class="card-body">
-                <h6 class="text-muted mb-3"><i class="bi bi-bullseye me-2"></i>Associated Structure Sets</h6>
-                
-                {% if item.rtstruct_series %}
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>RTStruct Series UID</th>
-                                <th>Patient ID</th>
-                                <th class="text-center">ROI Count</th>
-                                <th class="text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for rtstruct in item.rtstruct_series %}
-                            <tr>
-                                <td>
-                                    <code>{{ rtstruct.series_instance_uid|truncatechars:45 }}</code>
-                                </td>
-                                <td>
-                                    {{ rtstruct.study.patient.patient_id }}
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-primary">{{ rtstruct.roi_count }}</span>
-                                </td>
-                                <td class="text-center">
-                                    <a href="{% url 'roi_detail' rtstruct.id %}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye me-1"></i>View ROIs
-                                    </a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            <!-- Progress Bar -->
+            <div id="progress-wrapper" class="mb-3 d-none">
+                <div class="progress" style="height: 25px;">
+                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        0%
+                    </div>
                 </div>
-                {% else %}
-                <p class="text-muted mb-0">No structure sets found for this series.</p>
-                {% endif %}
+                <div id="progress-info" class="text-center text-muted mt-1">Waiting to start...</div>
             </div>
-        </div>
-        {% endfor %}
+            
+            <div id="resultMessage" class="mb-3"></div>
+        
+            {% for item in series_with_rtstructs %}
+            <div class="card mb-4 series-card">
+                <!-- Referenced Image Series (CT) Header -->
+                <div class="card-header bg-light">
+                    <div class="row align-items-center">
+                        <div class="col-md-1 text-center">
+                            <input type="checkbox" class="form-check-input series-checkbox" 
+                                   name="series_ids" value="{{ item.referenced_series.id }}"
+                                   data-series-uid="{{ item.referenced_series.series_instance_uid|truncatechars:30 }}">
+                        </div>
+                        <div class="col-md-3">
+                            <h5 class="mb-0">
+                                <i class="bi bi-image me-2 text-primary"></i>
+                                <strong>Image Series</strong>
+                            </h5>
+                            <small class="text-muted">Patient: {{ item.referenced_series.study.patient.patient_id }}</small>
+                            {% if item.referenced_series.study.patient.patient_name %}
+                            <br><small class="text-muted">{{ item.referenced_series.study.patient.patient_name }}</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-5">
+                            <code>{{ item.referenced_series.series_instance_uid|truncatechars:40 }}</code>
+                            <br><small class="text-muted">Modality: <span class="badge bg-secondary">{{ item.referenced_series.modality|default:"Unknown" }}</span></small>
+                            {% if item.referenced_series.nifti_file_path %}
+                            <br><small class="text-success"><i class="bi bi-check-circle me-1"></i>NIfTI available</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 text-end">
+                            <span class="badge bg-info">{{ item.rtstruct_series|length }} RT Struct{{ item.rtstruct_series|length|pluralize }}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- RTStruct Series that reference this image series -->
+                <div class="card-body">
+                    <h6 class="text-muted mb-3"><i class="bi bi-bullseye me-2"></i>Associated Structure Sets</h6>
+                    
+                    {% if item.rtstruct_series %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>RTStruct Series UID</th>
+                                    <th>Patient ID</th>
+                                    <th class="text-center">ROI Count</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rtstruct in item.rtstruct_series %}
+                                <tr>
+                                    <td>
+                                        <code>{{ rtstruct.series_instance_uid|truncatechars:45 }}</code>
+                                    </td>
+                                    <td>
+                                        {{ rtstruct.study.patient.patient_id }}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary">{{ rtstruct.roi_count }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{% url 'roi_detail' rtstruct.id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye me-1"></i>View ROIs
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No structure sets found for this series.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </form>
         
         {% else %}
         <div class="alert alert-info">
@@ -101,4 +147,163 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const checkboxes = document.querySelectorAll('.series-checkbox');
+    const convertBtn = document.getElementById('convertBtn');
+    const selectedCount = document.getElementById('selectedCount');
+    const progressWrapper = document.getElementById('progress-wrapper');
+    const progressBar = document.getElementById('progress-bar');
+    const progressInfo = document.getElementById('progress-info');
+    const resultMessage = document.getElementById('resultMessage');
+    const niftiForm = document.getElementById('niftiForm');
+    
+    function updateSelectedCount() {
+        const count = document.querySelectorAll('.series-checkbox:checked').length;
+        selectedCount.textContent = count + ' selected';
+        convertBtn.disabled = count === 0;
+    }
+    
+    selectAllBtn.addEventListener('click', function() {
+        checkboxes.forEach(cb => cb.checked = true);
+        updateSelectedCount();
+    });
+    
+    deselectAllBtn.addEventListener('click', function() {
+        checkboxes.forEach(cb => cb.checked = false);
+        updateSelectedCount();
+    });
+    
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+    
+    niftiForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(niftiForm);
+        const selectedIds = formData.getAll('series_ids');
+        
+        if (selectedIds.length === 0) {
+            alert('Please select at least one series to convert.');
+            return;
+        }
+        
+        progressWrapper.classList.remove('d-none');
+        convertBtn.disabled = true;
+        convertBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Converting...';
+        
+        fetch(niftiForm.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                connectToTask(data.task_id);
+            } else {
+                handleError(data.error || 'Conversion failed');
+            }
+        })
+        .catch(error => {
+            handleError('Error: ' + error.message);
+        });
+    });
+    
+    function connectToTask(taskId) {
+        const progressUrl = `/celery-progress/${taskId}/`;
+        let retryCount = 0;
+        
+        function poll() {
+            fetch(progressUrl)
+                .then(response => response.json())
+                .then(data => {
+                    retryCount = 0;
+                    
+                    const progress = data.progress || {};
+                    const current = progress.current || 0;
+                    const total = progress.total || 100;
+                    const description = progress.description || data.description || 'Processing...';
+                    const complete = data.complete || data.state === 'SUCCESS' || data.state === 'FAILURE';
+                    
+                    if (complete) {
+                        handleComplete(data);
+                    } else {
+                        const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+                        updateProgress(percent, description);
+                        setTimeout(poll, 500);
+                    }
+                })
+                .catch(error => {
+                    retryCount++;
+                    if (retryCount < 3) {
+                        setTimeout(poll, 1000);
+                    } else {
+                        handleError('Error checking progress: ' + error.message);
+                    }
+                });
+        }
+        
+        poll();
+    }
+    
+    function updateProgress(percent, description) {
+        progressBar.style.width = percent + '%';
+        progressBar.textContent = percent + '%';
+        progressBar.setAttribute('aria-valuenow', percent);
+        progressInfo.textContent = description;
+    }
+    
+    function handleComplete(data) {
+        updateProgress(100, 'Complete!');
+        
+        setTimeout(() => {
+            progressWrapper.classList.add('d-none');
+            
+            const result = data.result || data;
+            
+            if (result.success) {
+                resultMessage.innerHTML = `
+                    <div class="alert alert-success">
+                        <h5><i class="bi bi-check-circle me-2"></i>Conversion Complete!</h5>
+                        <p class="mb-2">Successfully processed <strong>${result.processed_series || 0}</strong> series.</p>
+                        <div class="mt-3">
+                            <a href="{% url 'nifti_list' %}" class="btn btn-success">
+                                <i class="bi bi-file-earmark-zip me-1"></i>View NIfTI Files
+                            </a>
+                            <button type="button" class="btn btn-outline-secondary ms-2" onclick="location.reload();">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Refresh Page
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                handleError(result.error || 'Conversion failed');
+            }
+            
+            convertBtn.disabled = false;
+            convertBtn.innerHTML = '<i class="bi bi-file-earmark-zip me-1"></i>Convert to NIfTI';
+        }, 500);
+    }
+    
+    function handleError(message) {
+        progressWrapper.classList.add('d-none');
+        resultMessage.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${message}
+            </div>
+        `;
+        convertBtn.disabled = false;
+        convertBtn.innerHTML = '<i class="bi bi-file-earmark-zip me-1"></i>Convert to NIfTI';
+    }
+});
+</script>
 {% endblock %}

@@ -7,6 +7,7 @@ from pathlib import Path
 import pydicom
 from celery import shared_task
 from celery_progress.backend import ProgressRecorder
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -65,6 +66,15 @@ def clear_processing_progress(archive_id):
     """Clear processing progress from cache."""
     progress_key = f"dicom_processing_{archive_id}"
     cache.delete(progress_key)
+
+
+def sanitize_for_path(value):
+    """Sanitize a string to be safe for use in file paths."""
+    # Replace characters that are problematic in file paths
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        value = value.replace(char, '_')
+    return value
 
 
 @shared_task(bind=True)
@@ -160,7 +170,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                 try:
                     # Try to read the file as DICOM
                     try:
-                        ds = pydicom.dcmread(str(file_path), stop_before_pixels=True, force=True)
+                        ds = pydicom.dcmread(str(file_path), stop_before_pixels=False, force=True)
                     except Exception:
                         skipped_files += 1
                         continue
@@ -222,20 +232,26 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                             instance_number = None
 
                     # Build the directory structure and save the file
-                    patient_dir = base_dicom_dir / patient_id
-                    study_dir = patient_dir / study_instance_uid
-                    series_dir = study_dir / series_instance_uid
+                    # Sanitize patient_id for safe path usage
+                    safe_patient_id = sanitize_for_path(str(patient_id))
+                    patient_dir = base_dicom_dir / safe_patient_id
+                    study_dir = patient_dir / sanitize_for_path(study_instance_uid)
+                    series_dir = study_dir / sanitize_for_path(series_instance_uid)
                     series_dir.mkdir(parents=True, exist_ok=True)
 
                     # Save the DICOM file
-                    dicom_filename = f"{sop_instance_uid}.dcm"
+                    dicom_filename = f"{sanitize_for_path(sop_instance_uid)}.dcm"
                     dicom_file_path = series_dir / dicom_filename
 
                     # Use pydicom's save_as to save the file
                     ds.save_as(str(dicom_file_path))
 
-                    # Get absolute path
-                    absolute_file_path = str(dicom_file_path.absolute())
+                    # Store path relative to MEDIA_ROOT for portability
+                    try:
+                        relative_file_path = str(dicom_file_path.relative_to(settings.MEDIA_ROOT))
+                    except ValueError:
+                        # If not under MEDIA_ROOT, store as absolute
+                        relative_file_path = str(dicom_file_path.absolute())
 
                     # Extract referenced series instance UID for RTStruct files
                     referenced_series_uid = None
@@ -293,7 +309,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                         "series_instance_uid": series_instance_uid,
                         "sop_instance_uid": sop_instance_uid,
                         "instance_number": instance_number,
-                        "instance_file_path": absolute_file_path,
+                        "instance_file_path": relative_file_path,
                         "referenced_series_instance_uid": referenced_series_uid,
                     }
 

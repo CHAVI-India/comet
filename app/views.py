@@ -374,3 +374,70 @@ def instance_delete(request, pk):
         messages.error(request, f"Error deleting instance: {str(e)}")
     
     return redirect("study_detail", pk=instance.series.study.pk)
+
+
+@require_POST
+def nifti_convert(request):
+    """View to trigger NIfTI conversion for selected series using Celery."""
+    from app.tasks import convert_series_to_nifti
+    
+    series_ids = request.POST.getlist('series_ids')
+    
+    if not series_ids:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({
+                "success": False,
+                "error": "No series selected for conversion"
+            })
+        messages.error(request, "Please select at least one series to convert.")
+        return redirect("roi_list")
+    
+    # Validate that all series IDs are valid image series (not RTSTRUCT)
+    valid_series = DICOMSeries.objects.filter(
+        id__in=series_ids
+    ).exclude(modality='RTSTRUCT')
+    
+    valid_series_ids = list(valid_series.values_list('id', flat=True))
+    
+    if not valid_series_ids:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({
+                "success": False,
+                "error": "No valid image series selected (RTStruct series cannot be converted directly)"
+            })
+        messages.error(request, "No valid image series selected.")
+        return redirect("roi_list")
+    
+    # Enqueue the conversion task using Celery
+    task = convert_series_to_nifti.delay(valid_series_ids)
+    
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({
+            "success": True,
+            "message": f"NIfTI conversion queued for {len(valid_series_ids)} series",
+            "task_status": "queued",
+            "task_id": task.id,
+            "series_count": len(valid_series_ids)
+        })
+    
+    messages.info(request, f"NIfTI conversion task queued for {len(valid_series_ids)} series. This will run in the background.")
+    return redirect("roi_list")
+
+
+def nifti_list(request):
+    """View to list all series that have been converted to NIfTI."""
+    from django.db.models import Q
+    
+    # Get all series with NIfTI files
+    nifti_series = DICOMSeries.objects.filter(
+        nifti_file_path__isnull=False
+    ).exclude(
+        nifti_file_path=''
+    ).select_related(
+        'study',
+        'study__patient'
+    ).order_by(
+        '-modified_at'
+    )
+    
+    return render(request, "app/nifti_list.html", {"nifti_series": nifti_series})
