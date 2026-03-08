@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.validators import FileExtensionValidator
+from django.db.models import Q
 
 # Create your models here.
 
@@ -76,12 +77,23 @@ class RTStructROI(models.Model):
     '''
     This model will store information about the RT Struct ROI. It is linked to the DICOMInstance model.
     '''
-    instance = models.ForeignKey(DICOMInstance, on_delete=models.CASCADE)
+    instance = models.ForeignKey(DICOMInstance, on_delete=models.CASCADE,null=True,blank=True)
     staple_roi = models.ForeignKey(StapleROI, on_delete=models.CASCADE,null=True,blank=True)
     roi_number = models.IntegerField(null=True,blank = True)
     roi_name = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(instance__isnull=False, staple_roi__isnull=True) |
+                    Q(instance__isnull=True, staple_roi__isnull=False)
+                ),
+                name='either_instance_or_staple_roi'
+            )
+        ]
     
     def __str__(self):
         return self.roi_name
