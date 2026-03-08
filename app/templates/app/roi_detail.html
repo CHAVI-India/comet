@@ -1,0 +1,109 @@
+{% extends 'app/base.html' %}
+
+{% block title %}ROI Details{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{% url 'roi_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to ROI List
+    </a>
+</div>
+
+<div class="card shadow">
+    <div class="card-header">
+        <h4 class="mb-0"><i class="bi bi-bullseye me-2"></i>ROI Details</h4>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <table class="table table-borderless">
+                    <tr>
+                        <td class="text-muted">Patient ID:</td>
+                        <td><strong>{{ series.study.patient.patient_id }}</strong></td>
+                    </tr>
+                    {% if series.study.patient.patient_name %}
+                    <tr>
+                        <td class="text-muted">Patient Name:</td>
+                        <td>{{ series.study.patient.patient_name }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td class="text-muted">Study Instance UID:</td>
+                        <td><code>{{ series.study.study_instance_uid }}</code></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-borderless">
+                    <tr>
+                        <td class="text-muted">RTStruct Series UID:</td>
+                        <td><code>{{ series.series_instance_uid }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Series Date:</td>
+                        <td>{{ series.series_date|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Modality:</td>
+                        <td><span class="badge bg-info">{{ series.modality }}</span></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <h5 class="mb-3"><i class="bi bi-images me-2"></i>ROIs Grouped by Referenced Image Series</h5>
+        
+        {% for key, group in rois_by_ref_series.items %}
+        <div class="card mb-3">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-link-45deg me-2 text-info"></i>
+                        <strong>Referenced Series:</strong>
+                        {% if group.series %}
+                        <code>{{ group.series_uid|truncatechars:50 }}</code>
+                        {% else %}
+                        <span class="text-muted">Unknown</span>
+                        {% endif %}
+                    </div>
+                    <span class="badge bg-primary">{{ group.rois|length }} ROI{{ group.rois|length|pluralize }}</span>
+                </div>
+                {% if group.series %}
+                <small class="text-muted ms-4">
+                    Modality: {{ group.series.modality|default:"Unknown" }} | 
+                    Instances: {{ group.series.dicominstance_set.count }}
+                </small>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="80">ROI #</th>
+                                <th>ROI Name</th>
+                                <th width="150">From Instance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for roi in group.rois %}
+                            <tr>
+                                <td><span class="badge bg-secondary">{{ roi.roi_number }}</span></td>
+                                <td>{{ roi.roi_name }}</td>
+                                <td><small class="text-muted">#{{ roi.instance.instance_number|default:"N/A" }}</small></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            No ROIs found for this structure set.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

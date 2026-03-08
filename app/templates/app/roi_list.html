@@ -1,0 +1,104 @@
+{% extends 'app/base.html' %}
+
+{% block title %}ROIs by Image Series{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Home
+    </a>
+</div>
+
+<div class="card shadow">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0"><i class="bi bi-images me-2"></i>ROIs Grouped by Image Series</h4>
+        <a href="{% url 'rtstruct_list' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-gear me-1"></i>Extract More ROIs
+        </a>
+    </div>
+    <div class="card-body">
+        {% if series_with_rtstructs %}
+        
+        {% for item in series_with_rtstructs %}
+        <div class="card mb-4">
+            <!-- Referenced Image Series (CT) Header -->
+            <div class="card-header bg-light">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <h5 class="mb-0">
+                            <i class="bi bi-image me-2 text-primary"></i>
+                            <strong>Image Series</strong>
+                        </h5>
+                        <small class="text-muted">Patient: {{ item.referenced_series.study.patient.patient_id }}</small>
+                        {% if item.referenced_series.study.patient.patient_name %}
+                        <br><small class="text-muted">{{ item.referenced_series.study.patient.patient_name }}</small>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-5">
+                        <code>{{ item.referenced_series.series_instance_uid|truncatechars:40 }}</code>
+                        <br><small class="text-muted">Modality: <span class="badge bg-secondary">{{ item.referenced_series.modality|default:"Unknown" }}</span></small>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <span class="badge bg-info">{{ item.rtstruct_series|length }} RT Struct{{ item.rtstruct_series|length|pluralize }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RTStruct Series that reference this image series -->
+            <div class="card-body">
+                <h6 class="text-muted mb-3"><i class="bi bi-bullseye me-2"></i>Associated Structure Sets</h6>
+                
+                {% if item.rtstruct_series %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>RTStruct Series UID</th>
+                                <th>Patient ID</th>
+                                <th class="text-center">ROI Count</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rtstruct in item.rtstruct_series %}
+                            <tr>
+                                <td>
+                                    <code>{{ rtstruct.series_instance_uid|truncatechars:45 }}</code>
+                                </td>
+                                <td>
+                                    {{ rtstruct.study.patient.patient_id }}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-primary">{{ rtstruct.roi_count }}</span>
+                                </td>
+                                <td class="text-center">
+                                    <a href="{% url 'roi_detail' rtstruct.id %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye me-1"></i>View ROIs
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No structure sets found for this series.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            No image series with associated RTStructs found. Go to the RT Structs page to extract ROI information from RT Structure Set files.
+        </div>
+        <div class="text-center">
+            <a href="{% url 'rtstruct_list' %}" class="btn btn-primary">
+                <i class="bi bi-file-medical me-1"></i>Go to RT Structs
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

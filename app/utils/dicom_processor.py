@@ -149,14 +149,13 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                 current_file += 1
                 file_path = Path(root) / filename
 
-                # Update progress every 5 files or at milestones
-                if current_file % 5 == 0 or current_file == total_files:
-                    report_progress(
-                        "processing",
-                        current_file,
-                        total_files,
-                        f"Processing file {current_file} of {total_files}... ({processed_files} valid DICOM files found)"
-                    )
+                # Update progress for every file to ensure frequent updates
+                report_progress(
+                    "processing",
+                    current_file,
+                    total_files,
+                    f"Processing file {current_file} of {total_files}... ({processed_files} valid DICOM files found)"
+                )
 
                 try:
                     # Try to read the file as DICOM
@@ -238,6 +237,34 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                     # Get absolute path
                     absolute_file_path = str(dicom_file_path.absolute())
 
+                    # Extract referenced series instance UID for RTStruct files
+                    referenced_series_uid = None
+                    if modality == "RTSTRUCT":
+                        # Try to extract from ReferencedFrameOfReferenceSequence
+                        try:
+                            ref_frame_seq = getattr(ds, "ReferencedFrameOfReferenceSequence", None)
+                            if ref_frame_seq:
+                                rt_ref_study_seq = ref_frame_seq[0].get("RTReferencedStudySequence", None)
+                                if rt_ref_study_seq:
+                                    rt_ref_series_seq = rt_ref_study_seq[0].get("RTReferencedSeriesSequence", None)
+                                    if rt_ref_series_seq:
+                                        referenced_series_uid = rt_ref_series_seq[0].get("SeriesInstanceUID", None)
+                        except (AttributeError, IndexError, KeyError):
+                            pass
+                        
+                        # Fallback: try to get from first ROI's referenced frame
+                        if not referenced_series_uid:
+                            try:
+                                structure_set_roi_seq = getattr(ds, "StructureSetROISequence", None)
+                                if structure_set_roi_seq:
+                                    # Get the frame of reference UID and find matching series
+                                    frame_ref_uid = getattr(structure_set_roi_seq[0], "ReferencedFrameOfReferenceUID", None)
+                                    if frame_ref_uid and frame_of_reference_uid == frame_ref_uid:
+                                        # The series with matching frame_of_reference_uid is the referenced one
+                                        referenced_series_uid = series_instance_uid
+                            except (AttributeError, IndexError):
+                                pass
+
                     # Store data for bulk processing
                     patients_data[patient_id] = {
                         "patient_id": patient_id,
@@ -267,6 +294,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                         "sop_instance_uid": sop_instance_uid,
                         "instance_number": instance_number,
                         "instance_file_path": absolute_file_path,
+                        "referenced_series_instance_uid": referenced_series_uid,
                     }
 
                     processed_files += 1
@@ -275,11 +303,12 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                     errors.append(f"Error processing {filename}: {str(e)}")
                     continue
 
-    report_progress("saving", 95, 100, f"Saving {len(patients_data)} patients, {len(studies_data)} studies to database...")
+    report_progress("saving", 95, 100, f"Preparing to save {len(patients_data)} patients, {len(studies_data)} studies, {len(series_data)} series, {len(instances_data)} instances to database...")
 
     # Bulk create/update database records
     try:
         # Process Patients
+        report_progress("saving", 95, 100, f"Step 1/5: Processing {len(patients_data)} patients...")
         existing_patients = {
             p.patient_id: p
             for p in Patient.objects.filter(patient_id__in=list(patients_data.keys()))
@@ -310,6 +339,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
         patient_id_to_obj = {p.patient_id: p for p in patient_objs}
 
         # Process Studies
+        report_progress("saving", 96, 100, f"Step 2/5: Processing {len(studies_data)} studies...")
         existing_studies = {
             s.study_instance_uid: s
             for s in DICOMStudy.objects.filter(
@@ -354,6 +384,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
         study_uid_to_obj = {s.study_instance_uid: s for s in study_objs}
 
         # Process Series
+        report_progress("saving", 97, 100, f"Step 3/5: Processing {len(series_data)} series...")
         existing_series = {
             s.series_instance_uid: s
             for s in DICOMSeries.objects.filter(
@@ -405,6 +436,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
         series_uid_to_obj = {s.series_instance_uid: s for s in series_objs}
 
         # Process Instances
+        report_progress("saving", 98, 100, f"Step 4/5: Processing {len(instances_data)} instances...")
         existing_instances = {
             i.sop_instance_uid: i
             for i in DICOMInstance.objects.filter(
@@ -417,12 +449,18 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
 
         for sop_uid, data in instances_data.items():
             series = series_uid_to_obj.get(data["series_instance_uid"])
+            # Look up referenced series if available (for RTStruct files)
+            referenced_series = None
+            ref_series_uid = data.get("referenced_series_instance_uid")
+            if ref_series_uid:
+                referenced_series = series_uid_to_obj.get(ref_series_uid)
 
             if sop_uid in existing_instances:
                 inst = existing_instances[sop_uid]
                 inst.series = series
                 inst.instance_number = data["instance_number"]
                 inst.instance_file_path = data["instance_file_path"]
+                inst.referenced_series_instance_uid = referenced_series
                 instances_to_update.append(inst)
             else:
                 instances_to_create.append(
@@ -431,6 +469,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                         sop_instance_uid=sop_uid,
                         instance_number=data["instance_number"],
                         instance_file_path=data["instance_file_path"],
+                        referenced_series_instance_uid=referenced_series,
                     )
                 )
 
@@ -438,10 +477,11 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
             DICOMInstance.objects.bulk_create(instances_to_create)
         if instances_to_update:
             DICOMInstance.objects.bulk_update(
-                instances_to_update, ["series", "instance_number", "instance_file_path"]
+                instances_to_update, ["series", "instance_number", "instance_file_path", "referenced_series_instance_uid"]
             )
 
         # Update archive status
+        report_progress("saving", 99, 100, "Step 5/5: Finalizing and updating archive status...")
         archive.archive_extracted = True
         archive.archive_extraction_date_time = timezone.now()
         archive.save()
@@ -453,9 +493,9 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
             "processed_files": int(processed_files),
             "skipped_files": int(skipped_files),
         }
-        _mark_complete(archive_id, result)
-        return result
-
+    # Final 100% progress - this MUST be called
+    progress_recorder.set_progress(100, 100, description="Processing complete!")
+    
     result = {
         "success": True,
         "processed_files": int(processed_files),

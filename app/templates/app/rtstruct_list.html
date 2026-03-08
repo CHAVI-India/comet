@@ -1,0 +1,286 @@
+{% extends 'app/base.html' %}
+
+{% block title %}RT Structure Sets{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Home
+    </a>
+</div>
+
+<div class="card shadow">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0"><i class="bi bi-file-medical me-2"></i>RT Structure Sets</h4>
+        <span class="badge bg-info fs-6">{{ rtstruct_series|length }} Series</span>
+    </div>
+    <div class="card-body">
+        {% if rtstruct_series %}
+        <form id="rtstructForm" method="post" action="{% url 'rtstruct_extract' %}">
+            {% csrf_token %}
+            
+            <div class="mb-3">
+                <button type="button" id="extractBtn" class="btn btn-primary" disabled>
+                    <i class="bi bi-gear me-2"></i>Extract ROI Information
+                </button>
+                <span id="selectedCount" class="ms-2 text-muted">No instances selected</span>
+            </div>
+
+            <div id="progress-wrapper" class="mb-3 d-none">
+                <div class="progress" style="height: 25px;">
+                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        0%
+                    </div>
+                </div>
+                <div id="progress-info" class="text-center mt-1 text-muted small">Waiting to start...</div>
+            </div>
+
+            <div id="resultMessage"></div>
+
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="40">
+                                <input type="checkbox" class="form-check-input" id="selectAll">
+                            </th>
+                            <th>Patient ID</th>
+                            <th>Study Instance UID</th>
+                            <th>Series Instance UID</th>
+                            <th>Series Date</th>
+                            <th>Instance SOP UID</th>
+                            <th>Referenced Series</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for series in rtstruct_series %}
+                        <tr>
+                            <td colspan="7" class="table-secondary py-1">
+                                <strong>Patient:</strong> {{ series.study.patient.patient_id }} | 
+                                <strong>Study:</strong> {{ series.study.study_instance_uid|truncatechars:30 }}
+                            </td>
+                        </tr>
+                        {% for instance in series.dicominstance_set.all %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-check-input instance-checkbox" 
+                                       name="instance_ids" value="{{ instance.id }}"
+                                       data-sop-uid="{{ instance.sop_instance_uid|truncatechars:30 }}">
+                            </td>
+                            <td>{{ series.study.patient.patient_id }}</td>
+                            <td>{{ series.study.study_instance_uid|truncatechars:30 }}</td>
+                            <td>{{ series.series_instance_uid|truncatechars:30 }}</td>
+                            <td>{{ series.series_date|default:"-" }}</td>
+                            <td>
+                                <small class="text-muted" title="{{ instance.sop_instance_uid }}">
+                                    {{ instance.sop_instance_uid|truncatechars:30 }}
+                                </small>
+                            </td>
+                            <td>
+                                {% if instance.referenced_series_instance_uid %}
+                                <small class="text-info" title="{{ instance.referenced_series_instance_uid.series_instance_uid }}">
+                                    <i class="bi bi-link-45deg me-1"></i>{{ instance.referenced_series_instance_uid.series_instance_uid|truncatechars:25 }}
+                                </small>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-muted text-center">No instances found for this series</td>
+                        </tr>
+                        {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            No RT Structure Set files found. Upload a DICOM archive containing RTSTRUCT files to see them here.
+        </div>
+        <div class="text-center">
+            <a href="{% url 'dicom_archive_upload' %}" class="btn btn-primary">
+                <i class="bi bi-upload me-1"></i>Upload DICOM Archive
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const instanceCheckboxes = document.querySelectorAll('.instance-checkbox');
+    const extractBtn = document.getElementById('extractBtn');
+    const selectedCountSpan = document.getElementById('selectedCount');
+    const rtstructForm = document.getElementById('rtstructForm');
+    const progressWrapper = document.getElementById('progress-wrapper');
+    const progressBar = document.getElementById('progress-bar');
+    const progressInfo = document.getElementById('progress-info');
+    const resultMessage = document.getElementById('resultMessage');
+
+    function updateSelectedCount() {
+        const checked = document.querySelectorAll('.instance-checkbox:checked');
+        const count = checked.length;
+        selectedCountSpan.textContent = count > 0 ? `${count} instance(s) selected` : 'No instances selected';
+        extractBtn.disabled = count === 0;
+    }
+
+    selectAllCheckbox.addEventListener('change', function() {
+        instanceCheckboxes.forEach(cb => {
+            cb.checked = selectAllCheckbox.checked;
+        });
+        updateSelectedCount();
+    });
+
+    instanceCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+
+    function updateProgress(progress, info) {
+        progressBar.style.width = progress + '%';
+        progressBar.setAttribute('aria-valuenow', progress);
+        progressBar.textContent = progress + '%';
+        if (info) {
+            progressInfo.textContent = info;
+        }
+
+        if (progress >= 90) {
+            progressBar.classList.remove('bg-primary', 'bg-info', 'bg-warning');
+            progressBar.classList.add('bg-success');
+        } else if (progress >= 50) {
+            progressBar.classList.remove('bg-primary', 'bg-warning');
+            progressBar.classList.add('bg-info');
+        } else if (progress >= 25) {
+            progressBar.classList.remove('bg-primary');
+            progressBar.classList.add('bg-warning');
+        }
+    }
+
+    function connectToTask(taskId) {
+        const progressUrl = `/celery-progress/${taskId}/`;
+        let retryCount = 0;
+
+        function poll() {
+            fetch(progressUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Progress endpoint not available');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    retryCount = 0;
+
+                    if (data.complete) {
+                        updateProgress(100, 'Complete!');
+                        handleExtractionComplete(data.result);
+                    } else {
+                        const percent = Math.round((data.current / data.total) * 100);
+                        updateProgress(percent, data.description || 'Processing...');
+                        setTimeout(poll, 500);
+                    }
+                })
+                .catch(error => {
+                    retryCount++;
+                    if (retryCount < 3) {
+                        setTimeout(poll, 1000);
+                    } else {
+                        progressInfo.textContent = 'Error checking progress: ' + error.message;
+                        extractBtn.disabled = false;
+                    }
+                });
+        }
+
+        poll();
+    }
+
+    function handleExtractionComplete(result) {
+        progressWrapper.classList.add('d-none');
+
+        if (result && result.success) {
+            resultMessage.innerHTML = `
+                <div class="alert alert-success">
+                    <h5><i class="bi bi-check-circle me-2"></i>ROI Extraction Complete!</h5>
+                    <ul class="mb-0">
+                        <li>Instances processed: <strong>${result.processed_instances}/${result.total_instances}</strong></li>
+                        <li>Total ROIs extracted: <strong>${result.total_rois_extracted}</strong></li>
+                    </ul>
+                    ${result.errors && result.errors.length > 0 ? `<p class="mt-2 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>${result.errors.length} errors occurred.</p>` : ''}
+                </div>
+            `;
+            // Uncheck all checkboxes after successful extraction
+            instanceCheckboxes.forEach(cb => cb.checked = false);
+            selectAllCheckbox.checked = false;
+            updateSelectedCount();
+        } else {
+            const errorMsg = result && result.error ? result.error : 'Unknown error occurred';
+            resultMessage.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${errorMsg}
+                </div>
+            `;
+            extractBtn.disabled = false;
+        }
+    }
+
+    extractBtn.addEventListener('click', function() {
+        const checked = document.querySelectorAll('.instance-checkbox:checked');
+        if (checked.length === 0) {
+            alert('Please select at least one instance.');
+            return;
+        }
+
+        // Disable button and show progress
+        extractBtn.disabled = true;
+        progressWrapper.classList.remove('d-none');
+        resultMessage.innerHTML = '';
+        updateProgress(0, 'Queuing task...');
+
+        // Collect form data
+        const formData = new FormData(rtstructForm);
+
+        fetch(rtstructForm.action, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                progressWrapper.classList.add('d-none');
+                resultMessage.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Error:</strong> ${data.error || 'Failed to queue task'}
+                    </div>
+                `;
+                extractBtn.disabled = false;
+            } else if (data.task_id) {
+                updateProgress(0, 'Task started...');
+                connectToTask(data.task_id);
+            }
+        })
+        .catch(error => {
+            progressWrapper.classList.add('d-none');
+            resultMessage.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${error.message}
+                </div>
+            `;
+            extractBtn.disabled = false;
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -5,44 +5,103 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="bi bi-people me-2"></i>Patients</h2>
-    <a href="{% url 'dicom_archive_upload' %}" class="btn btn-success">
-        <i class="bi bi-upload me-1"></i>Upload New Archive
-    </a>
+    <div>
+        <button type="button" class="btn btn-danger me-2" id="deleteSelectedBtn" onclick="deleteSelected()" disabled>
+            <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
+        </button>
+        <a href="{% url 'dicom_archive_upload' %}" class="btn btn-success">
+            <i class="bi bi-upload me-1"></i>Upload New Archive
+        </a>
+    </div>
 </div>
 
 {% if patients %}
-<div class="table-responsive">
-    <table class="table table-striped table-hover">
-        <thead class="table-dark">
-            <tr>
-                <th>Patient ID</th>
-                <th>Name</th>
-                <th>Date of Birth</th>
-                <th>Gender</th>
-                <th>Studies</th>
-                <th>Created</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for patient in patients %}
-            <tr>
-                <td><code>{{ patient.patient_id }}</code></td>
-                <td>{{ patient.patient_name|default:"Unknown" }}</td>
-                <td>{{ patient.patient_dob|default:"-" }}</td>
-                <td>{{ patient.patient_gender|default:"-" }}</td>
-                <td>{{ patient.dicomstudy_set.count }}</td>
-                <td>{{ patient.created_at|date:"Y-m-d" }}</td>
-                <td>
-                    <a href="{% url 'patient_detail' patient.pk %}" class="btn btn-sm btn-primary">
-                        <i class="bi bi-eye"></i> View
-                    </a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+<form id="patientDeleteForm" method="post" action="{% url 'patient_delete_multiple' %}">
+    {% csrf_token %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    <th>Patient ID</th>
+                    <th>Name</th>
+                    <th>Date of Birth</th>
+                    <th>Gender</th>
+                    <th>Studies</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for patient in patients %}
+                <tr>
+                    <td><input type="checkbox" name="patient_ids" value="{{ patient.pk }}" class="form-check-input patient-checkbox"></td>
+                    <td><code>{{ patient.patient_id }}</code></td>
+                    <td>{{ patient.patient_name|default:"Unknown" }}</td>
+                    <td>{{ patient.patient_dob|default:"-" }}</td>
+                    <td>{{ patient.patient_gender|default:"-" }}</td>
+                    <td>{{ patient.dicomstudy_set.count }}</td>
+                    <td>{{ patient.created_at|date:"Y-m-d" }}</td>
+                    <td>
+                        <a href="{% url 'patient_detail' patient.pk %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        <form method="post" action="{% url 'patient_delete' patient.pk %}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete patient {{ patient.patient_id }}? This will also delete all associated studies, series, and instances.');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<script>
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const patientCheckboxes = document.querySelectorAll('.patient-checkbox');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    const selectedCountSpan = document.getElementById('selectedCount');
+    const patientDeleteForm = document.getElementById('patientDeleteForm');
+
+    // Select All functionality
+    selectAllCheckbox.addEventListener('change', function() {
+        patientCheckboxes.forEach(cb => {
+            cb.checked = this.checked;
+        });
+        updateSelectedCount();
+    });
+
+    // Individual checkbox change
+    patientCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+
+    function updateSelectedCount() {
+        const selectedCount = document.querySelectorAll('.patient-checkbox:checked').length;
+        selectedCountSpan.textContent = selectedCount;
+        deleteSelectedBtn.disabled = selectedCount === 0;
+        
+        // Update select all checkbox state
+        const allChecked = selectedCount === patientCheckboxes.length && selectedCount > 0;
+        const someChecked = selectedCount > 0 && selectedCount < patientCheckboxes.length;
+        selectAllCheckbox.checked = allChecked || someChecked;
+        selectAllCheckbox.indeterminate = someChecked;
+    }
+
+    function deleteSelected() {
+        const selectedCount = document.querySelectorAll('.patient-checkbox:checked').length;
+        if (selectedCount === 0) return;
+        
+        const confirmed = confirm(`Are you sure you want to delete ${selectedCount} patient(s)? This will also delete all associated studies, series, instances, and their files.`);
+        if (confirmed) {
+            patientDeleteForm.submit();
+        }
+    }
+</script>
 {% else %}
 <div class="text-center py-5">
     <i class="bi bi-people display-1 text-muted"></i>

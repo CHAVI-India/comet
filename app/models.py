@@ -42,6 +42,7 @@ class DICOMSeries(models.Model):
     series_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+    nifti_file_path = models.CharField(max_length=512, blank=True, null=True)
     
     def __str__(self):
         return self.series_instance_uid
@@ -52,6 +53,7 @@ class DICOMInstance(models.Model):
     '''
     series = models.ForeignKey(DICOMSeries, on_delete=models.CASCADE)
     sop_instance_uid = models.CharField(max_length=255, unique=True)
+    referenced_series_instance_uid = models.ForeignKey(DICOMSeries, on_delete=models.SET_NULL,related_name="referenced_series_uid",null=True,blank=True,help_text="This is the reference series instance UID for the RTStruct File only")
     instance_number = models.IntegerField(blank=True, null=True)
     instance_file_path = models.CharField(max_length=512, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
