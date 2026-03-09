@@ -1,6 +1,6 @@
 {% extends 'app/base.html' %}
 
-{% block title %}NIfTI Files - STAPLE Computation{% endblock %}
+{% block title %}NIfTI Files - Patient Structure Sets{% endblock %}
 
 {% block content %}
 {% csrf_token %}
@@ -9,147 +9,157 @@
         <i class="bi bi-arrow-left me-1"></i>Back to Home
     </a>
     <a href="{% url 'roi_list' %}" class="btn btn-outline-primary btn-sm ms-2">
-        <i class="bi bi-bullseye me-1"></i>View ROIs
+        <i class="bi bi-bullseye me-1"></i>View All ROIs
     </a>
 </div>
 
 <div class="card shadow mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h4 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Batch STAPLE Computation</h4>
-        <div>
-            <span id="selectedRoisCount" class="badge bg-secondary me-2">0 ROIs selected</span>
-            <button type="button" id="computeBatchStapleBtn" class="btn btn-success btn-sm" disabled>
-                <i class="bi bi-calculator me-1"></i>Compute STAPLE
-            </button>
-        </div>
+    <div class="card-header">
+        <h4 class="mb-0"><i class="bi bi-file-earmark-medical me-2"></i>NIfTI Files - Patient Structure Sets</h4>
+        <small class="text-muted">View patients with converted NIfTI structure sets and ROI information</small>
     </div>
     <div class="card-body">
         {% if patients_data %}
         
-        <!-- Global threshold setting -->
-        <div class="mb-3 p-3 bg-light rounded">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <label for="global_threshold" class="form-label mb-0">
-                        <strong>STAPLE Threshold (Global)</strong>
-                        <small class="text-muted d-block">Probability threshold for all computations</small>
-                    </label>
-                </div>
-                <div class="col-md-3">
-                    <input type="number" class="form-control" id="global_threshold" 
-                           value="0.95" min="0" max="1" step="0.05">
-                </div>
-                <div class="col-md-3">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllRoisBtn">
-                        <i class="bi bi-check-all me-1"></i>Select All
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="deselectAllRoisBtn">
-                        <i class="bi bi-x-square me-1"></i>Deselect All
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Progress Bar -->
-        <div id="batch-progress-wrapper" class="mb-3 d-none">
-            <div class="progress" style="height: 25px;">
-                <div id="batch-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
-                     role="progressbar" style="width: 0%">0%</div>
-            </div>
-            <div id="batch-progress-info" class="text-center text-muted mt-1">Processing...</div>
-        </div>
-        
-        <div id="batch-result-message" class="mb-3"></div>
-        
-        <!-- Patients with common ROIs -->
+        <!-- Patient List -->
         {% for patient_data in patients_data %}
-        {% if patient_data.has_common_rois %}
-        <div class="card mb-4 patient-card">
+        <div class="card mb-3 patient-card">
             <div class="card-header bg-light">
                 <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <h5 class="mb-0">
-                            <i class="bi bi-person me-2 text-primary"></i>
+                    <div class="col-md-6">
+                        <h5 class="mb-1">
+                            <i class="bi bi-person-fill me-2 text-primary"></i>
                             <strong>{{ patient_data.patient.patient_id }}</strong>
                         </h5>
                         {% if patient_data.patient.patient_name %}
                         <small class="text-muted">{{ patient_data.patient.patient_name }}</small>
                         {% endif %}
-                        <br>
-                        <small class="text-muted">
-                            Image Series: <code>{{ patient_data.image_series.series_instance_uid|truncatechars:35 }}</code>
-                        </small>
                     </div>
-                    <div class="col-md-4 text-end">
-                        <span class="badge bg-info">{{ patient_data.rtstruct_series|length }} Structure Sets</span>
-                        <span class="badge bg-success">{{ patient_data.common_rois|length }} Common ROIs</span>
+                    <div class="col-md-6 text-end">
+                        <span class="badge bg-info me-1">
+                            <i class="bi bi-layers me-1"></i>{{ patient_data.total_structure_sets }} Structure Set{{ patient_data.total_structure_sets|pluralize }}
+                        </span>
+                        <span class="badge bg-success me-1">
+                            <i class="bi bi-bullseye me-1"></i>{{ patient_data.total_unique_rois }} Unique ROI{{ patient_data.total_unique_rois|pluralize }}
+                        </span>
+                        {% if patient_data.total_staple_rois > 0 %}
+                        <span class="badge bg-warning text-dark me-1">
+                            <i class="bi bi-star-fill me-1"></i>{{ patient_data.total_staple_rois }} STAPLE
+                        </span>
+                        {% endif %}
                     </div>
                 </div>
             </div>
             
             <div class="card-body">
-                <h6 class="text-muted mb-3">
-                    <i class="bi bi-bullseye me-2"></i>Select ROIs for STAPLE Computation
-                    <small class="text-muted">(ROIs appearing in 2+ structure sets)</small>
-                </h6>
+                <!-- Image Series Info -->
+                {% if patient_data.image_series_list %}
+                <div class="mb-3">
+                    <h6 class="mb-2"><i class="bi bi-image me-2"></i>Image Series ({{ patient_data.image_series_list|length }})</h6>
+                    {% for img_data in patient_data.image_series_list %}
+                    <div class="p-2 mb-2 bg-light rounded">
+                        <small class="text-muted">
+                            <strong>{{ img_data.series.modality }}</strong> | 
+                            <code>{{ img_data.series.series_instance_uid|truncatechars:50 }}</code>
+                            <button type="button" 
+                                    class="btn btn-sm btn-outline-primary float-end visualize-btn" 
+                                    data-series-id="{{ img_data.series.id }}"
+                                    data-patient-id="{{ patient_data.patient.patient_id }}"
+                                    data-modality="{{ img_data.series.modality }}">
+                                <i class="bi bi-eye me-1"></i>Visualize
+                            </button>
+                        </small>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 
-                <div class="table-responsive">
+                <!-- Structure Sets Table -->
+                <h6 class="mb-2"><i class="bi bi-diagram-3 me-2"></i>Structure Sets ({{ patient_data.total_structure_sets }})</h6>
+                <div class="table-responsive mb-3">
                     <table class="table table-sm table-hover">
                         <thead class="table-light">
                             <tr>
-                                <th width="50">
-                                    <input type="checkbox" class="form-check-input patient-select-all" 
-                                           data-patient-id="{{ patient_data.patient.id }}">
-                                </th>
-                                <th>ROI Name</th>
-                                <th class="text-center">Available In</th>
-                                <th>Structure Sets</th>
+                                <th style="width: 5%">#</th>
+                                <th style="width: 40%">Structure Set UID</th>
+                                <th style="width: 20%">Referenced Image</th>
+                                <th style="width: 10%" class="text-center">ROI Count</th>
+                                <th style="width: 10%" class="text-center">NIfTI</th>
+                                <th style="width: 15%" class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for roi in patient_data.common_rois %}
+                            {% for ss in patient_data.structure_sets %}
                             <tr>
+                                <td>{{ forloop.counter }}</td>
                                 <td>
-                                    <input type="checkbox" class="form-check-input roi-checkbox" 
-                                           data-image-series-id="{{ patient_data.image_series.id }}"
-                                           data-structure-name="{{ roi.name }}"
-                                           data-rtstruct-ids="{{ roi.available_in|join:',' }}"
-                                           data-patient-id="{{ patient_data.patient.id }}">
+                                    <small><code>{{ ss.series_uid_short }}</code></small>
                                 </td>
                                 <td>
-                                    <strong>{{ roi.name }}</strong>
+                                    <small class="text-muted">{{ ss.image_series.modality }}</small>
                                 </td>
                                 <td class="text-center">
-                                    <span class="badge bg-primary">{{ roi.count }} / {{ patient_data.rtstruct_series|length }}</span>
+                                    <span class="badge bg-secondary">{{ ss.roi_count }}</span>
                                 </td>
-                                <td>
-                                    <small class="text-muted">
-                                        {% for rtstruct in patient_data.rtstruct_series %}
-                                        {% if rtstruct.series_id in roi.available_in %}
-                                        <span class="badge bg-secondary me-1">{{ rtstruct.series.series_instance_uid|truncatechars:20 }}</span>
-                                        {% endif %}
-                                        {% endfor %}
-                                    </small>
+                                <td class="text-center">
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i>
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-info view-rois-btn" 
+                                            type="button"
+                                            data-bs-toggle="collapse" 
+                                            data-bs-target="#rois-{{ ss.series_id }}">
+                                        <i class="bi bi-list-ul me-1"></i>View ROIs
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr class="collapse" id="rois-{{ ss.series_id }}">
+                                <td colspan="6" class="bg-light">
+                                    <div class="p-2">
+                                        <strong class="text-muted">ROIs in this structure set:</strong>
+                                        <div class="mt-2">
+                                            {% for roi_data in ss.roi_names_with_staple %}
+                                            <span class="badge bg-primary me-1 mb-1">
+                                                {{ roi_data.name }}
+                                                {% if roi_data.has_staple %}
+                                                <i class="bi bi-star-fill text-warning ms-1" title="STAPLE available"></i>
+                                                {% endif %}
+                                            </span>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                
+                <!-- STAPLE ROIs Summary -->
+                {% if patient_data.staple_rois %}
+                <div class="alert alert-warning mb-0">
+                    <h6 class="alert-heading">
+                        <i class="bi bi-star-fill me-2"></i>STAPLE Contours Available
+                    </h6>
+                    <p class="mb-2 small">The following ROIs have STAPLE contours computed:</p>
+                    <div>
+                        {% for roi_name in patient_data.staple_rois %}
+                        <span class="badge bg-dark me-1 mb-1">{{ roi_name }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
             </div>
         </div>
-        {% endif %}
         {% endfor %}
         
         {% else %}
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle me-2"></i>
-            No NIfTI files have been converted yet. Go to the ROI list page to convert DICOM series to NIfTI format.
-        </div>
-        <div class="text-center">
-            <a href="{% url 'roi_list' %}" class="btn btn-success">
-                <i class="bi bi-file-earmark-zip me-1"></i>Convert to NIfTI
-            </a>
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>No NIfTI files found.</strong> Please convert DICOM series to NIfTI format first.
         </div>
         {% endif %}
     </div>
@@ -157,220 +167,497 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const computeBtn = document.getElementById('computeBatchStapleBtn');
-    const selectedCountBadge = document.getElementById('selectedRoisCount');
-    const progressWrapper = document.getElementById('batch-progress-wrapper');
-    const progressBar = document.getElementById('batch-progress-bar');
-    const progressInfo = document.getElementById('batch-progress-info');
-    const resultMessage = document.getElementById('batch-result-message');
     
-    // Update selected count
-    function updateSelectedCount() {
-        const count = document.querySelectorAll('.roi-checkbox:checked').length;
-        selectedCountBadge.textContent = count + ' ROI' + (count !== 1 ? 's' : '') + ' selected';
-        computeBtn.disabled = count === 0;
+    // Visualization Modal Handlers
+    document.querySelectorAll('.visualize-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const seriesId = this.dataset.seriesId;
+            const patientId = this.dataset.patientId;
+            const modality = this.dataset.modality;
+            
+            // Load ROIs for this series
+            loadROIsForVisualization(seriesId, patientId, modality);
+        });
+    });
+});
+
+
+function loadROIsForVisualization(seriesId, patientId, modality) {
+    // Populate modal
+    document.getElementById('vizPatientId').textContent = patientId;
+    document.getElementById('vizSeriesId').value = seriesId;
+    document.getElementById('vizModality').textContent = modality;
+    
+    // Set default windowing for CT
+    if (modality === 'CT') {
+        document.getElementById('viz_window_center').value = '40';
+        document.getElementById('viz_window_width').value = '400';
+    } else {
+        document.getElementById('viz_window_center').value = '';
+        document.getElementById('viz_window_width').value = '';
     }
     
-    // Handle ROI checkbox changes
-    document.querySelectorAll('.roi-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-            updateSelectedCount();
-            
-            // Update patient select-all checkbox
-            const patientId = this.dataset.patientId;
-            const patientCheckboxes = document.querySelectorAll(`.roi-checkbox[data-patient-id="${patientId}"]`);
-            const patientSelectAll = document.querySelector(`.patient-select-all[data-patient-id="${patientId}"]`);
-            
-            if (patientSelectAll) {
-                const allChecked = Array.from(patientCheckboxes).every(cb => cb.checked);
-                const someChecked = Array.from(patientCheckboxes).some(cb => cb.checked);
-                patientSelectAll.checked = allChecked;
-                patientSelectAll.indeterminate = someChecked && !allChecked;
-            }
-        });
-    });
+    // Fetch ROIs for this series from backend
+    const roiContainer = document.getElementById('vizRoiList');
+    roiContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm me-2"></div>Loading ROIs...</div>';
     
-    // Handle patient select-all checkboxes
-    document.querySelectorAll('.patient-select-all').forEach(cb => {
-        cb.addEventListener('change', function() {
-            const patientId = this.dataset.patientId;
-            const checked = this.checked;
-            document.querySelectorAll(`.roi-checkbox[data-patient-id="${patientId}"]`).forEach(roiCb => {
-                roiCb.checked = checked;
-            });
-            updateSelectedCount();
-        });
-    });
-    
-    // Select all ROIs button
-    document.getElementById('selectAllRoisBtn').addEventListener('click', function() {
-        document.querySelectorAll('.roi-checkbox').forEach(cb => cb.checked = true);
-        document.querySelectorAll('.patient-select-all').forEach(cb => cb.checked = true);
-        updateSelectedCount();
-    });
-    
-    // Deselect all ROIs button
-    document.getElementById('deselectAllRoisBtn').addEventListener('click', function() {
-        document.querySelectorAll('.roi-checkbox').forEach(cb => cb.checked = false);
-        document.querySelectorAll('.patient-select-all').forEach(cb => {
-            cb.checked = false;
-            cb.indeterminate = false;
-        });
-        updateSelectedCount();
-    });
-    
-    // Compute batch STAPLE button
-    computeBtn.addEventListener('click', function() {
-        const selectedCheckboxes = document.querySelectorAll('.roi-checkbox:checked');
-        const threshold = parseFloat(document.getElementById('global_threshold').value);
+    fetch(`/api/series/${seriesId}/rois/`, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        roiContainer.innerHTML = '';
         
-        if (selectedCheckboxes.length === 0) {
-            alert('Please select at least one ROI for STAPLE computation');
+        if (data.rois && data.rois.length > 0) {
+            data.rois.forEach(roi => {
+                const div = document.createElement('div');
+                div.className = 'form-check mb-2';
+                div.innerHTML = `
+                    <input class="form-check-input viz-roi-checkbox" type="checkbox" value="${roi.name}" id="viz_roi_${roi.name.replace(/\s+/g, '_')}">
+                    <label class="form-check-label" for="viz_roi_${roi.name.replace(/\s+/g, '_')}">
+                        <strong>${roi.name}</strong>
+                        ${roi.has_staple ? '<span class="badge bg-success ms-2">STAPLE</span>' : ''}
+                    </label>
+                `;
+                roiContainer.appendChild(div);
+            });
+        } else {
+            roiContainer.innerHTML = '<div class="alert alert-warning">No ROIs found for this series.</div>';
+        }
+    })
+    .catch(error => {
+        roiContainer.innerHTML = '<div class="alert alert-danger">Error loading ROIs: ' + error.message + '</div>';
+    });
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('visualizationModal'));
+    modal.show();
+}
+
+function setVizWindow(center, width) {
+    document.getElementById('viz_window_center').value = center;
+    document.getElementById('viz_window_width').value = width;
+}
+
+function clearVizWindow() {
+    document.getElementById('viz_window_center').value = '';
+    document.getElementById('viz_window_width').value = '';
+}
+
+function generateVisualization() {
+    const seriesId = document.getElementById('vizSeriesId').value;
+    const selectedRois = Array.from(document.querySelectorAll('.viz-roi-checkbox:checked')).map(cb => cb.value);
+    
+    if (selectedRois.length === 0) {
+        alert('Please select at least one ROI to visualize');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('series_id', seriesId);
+    selectedRois.forEach(roi => formData.append('roi_names[]', roi));
+    formData.append('include_staple', document.getElementById('viz_include_staple').checked);
+    formData.append('window_center', document.getElementById('viz_window_center').value);
+    formData.append('window_width', document.getElementById('viz_window_width').value);
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    
+    const generateBtn = document.getElementById('generateVizBtn');
+    const vizProgress = document.getElementById('vizProgress');
+    const vizProgressBar = document.getElementById('vizProgressBar');
+    const vizProgressInfo = document.getElementById('vizProgressInfo');
+    const vizResult = document.getElementById('vizResult');
+    
+    generateBtn.disabled = true;
+    generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Generating...';
+    vizProgress.classList.remove('d-none');
+    vizResult.innerHTML = '';
+    
+    fetch('{% url "generate_visualization" %}', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.task_id) {
+            pollVizProgress(data.task_id, selectedRois.length);
+        } else {
+            handleVizError(data.error || 'Visualization generation failed');
+        }
+    })
+    .catch(error => {
+        handleVizError('Error: ' + error.message);
+    });
+}
+
+function pollVizProgress(taskId, roiCount) {
+    const progressUrl = `/celery-progress/${taskId}/`;
+    let retryCount = 0;
+    
+    function poll() {
+        fetch(progressUrl)
+            .then(response => response.json())
+            .then(data => {
+                retryCount = 0;
+                const progress = data.progress || {};
+                const current = progress.current || 0;
+                const total = progress.total || 100;
+                const description = progress.description || data.description || 'Processing...';
+                const complete = data.complete || data.state === 'SUCCESS' || data.state === 'FAILURE';
+                
+                if (complete) {
+                    handleVizComplete(data, roiCount);
+                } else {
+                    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+                    updateVizProgress(percent, description);
+                    setTimeout(poll, 1000);
+                }
+            })
+            .catch(error => {
+                retryCount++;
+                if (retryCount < 5) {
+                    setTimeout(poll, 2000);
+                } else {
+                    handleVizError('Lost connection to server');
+                }
+            });
+    }
+    
+    poll();
+}
+
+function updateVizProgress(percent, message) {
+    const vizProgressBar = document.getElementById('vizProgressBar');
+    const vizProgressInfo = document.getElementById('vizProgressInfo');
+    vizProgressBar.style.width = percent + '%';
+    vizProgressBar.textContent = percent + '%';
+    vizProgressInfo.textContent = message;
+}
+
+function handleVizComplete(data, roiCount) {
+    updateVizProgress(100, 'Complete!');
+    
+    const vizResult = document.getElementById('vizResult');
+    const generateBtn = document.getElementById('generateVizBtn');
+    
+    if (data.state === 'SUCCESS') {
+        const result = data.result || {};
+        const visualizations = result.visualizations || {};
+        
+        // Get the combined visualization (DICOM viewer style)
+        const vizData = visualizations.combined;
+        
+        if (!vizData) {
+            vizResult.innerHTML = '<div class="alert alert-warning">No visualization data returned</div>';
             return;
         }
         
-        // Build batch data
-        const batchData = Array.from(selectedCheckboxes).map(cb => ({
-            image_series_id: parseInt(cb.dataset.imageSeriesId),
-            structure_name: cb.dataset.structureName,
-            rtstruct_series_ids: cb.dataset.rtstructIds.split(',').map(id => parseInt(id)),
-            threshold: threshold
-        }));
+        const totalSlices = vizData.total_slices;
+        const slicePaths = vizData.slice_paths;
+        const rois = vizData.rois || [];
         
-        // Disable button
-        computeBtn.disabled = true;
-        computeBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Computing...';
+        // Display single interactive viewer with all ROIs (DICOM viewer style)
+        let vizHtml = `
+            <div class="alert alert-success mb-3">
+                <i class="bi bi-check-circle me-2"></i>
+                <strong>Visualization Complete!</strong> Generated ${totalSlices} CT slices with ${rois.length} ROI overlay(s)
+            </div>
+            
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong><i class="bi bi-eye me-2"></i>CT Image with ROI Overlays</strong>
+                        <span class="badge bg-light text-dark">Total Slices: ${totalSlices}</span>
+                    </div>
+                </div>
+                <div class="card-body p-2">
+                    <!-- Slice Viewer -->
+                    <div class="slice-viewer" data-roi="combined">
+                        <div class="text-center mb-2">
+                            <img id="slice_img_combined" 
+                                 src="/media/${slicePaths[0]}" 
+                                 class="img-fluid" 
+                                 style="max-width: 100%; border: 1px solid #ddd; cursor: pointer;"
+                                 onclick="openVizFullscreen('/media/${slicePaths[0]}', 'combined', ${JSON.stringify(slicePaths).replace(/"/g, '&quot;')})">
+                        </div>
+                        
+                        <!-- Navigation Controls -->
+                        <div class="row align-items-center mb-2">
+                            <div class="col-2 text-center">
+                                <button class="btn btn-sm btn-outline-primary" onclick="changeSlice('combined', -1)">
+                                    <i class="bi bi-chevron-left"></i> Prev
+                                </button>
+                            </div>
+                            <div class="col-8">
+                                <input type="range" class="form-range" 
+                                       id="slice_slider_combined" 
+                                       min="0" max="${totalSlices - 1}" value="0" 
+                                       oninput="updateSlice('combined', this.value)">
+                                <div class="text-center">
+                                    <small>Slice: <span id="slice_num_combined">1</span> / ${totalSlices}</small>
+                                </div>
+                            </div>
+                            <div class="col-2 text-center">
+                                <button class="btn btn-sm btn-outline-primary" onclick="changeSlice('combined', 1)">
+                                    Next <i class="bi bi-chevron-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- ROI Legend -->
+                        <div class="alert alert-info mb-2">
+                            <small><strong><i class="bi bi-palette me-1"></i>ROI Legend:</strong></small><br>
+                            ${rois.map(r => `<span class="badge me-1 mb-1" style="background-color: ${r.color}; color: ${r.color === 'white' || r.color === 'yellow' ? 'black' : 'white'};">${r.label}</span>`).join(' ')}
+                        </div>
+                        
+                        <!-- Keyboard hint -->
+                        <div class="text-center">
+                            <small class="text-muted"><i class="bi bi-keyboard me-1"></i>Use arrow keys, scroll wheel, or slider to navigate slices | Click image for fullscreen</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
         
-        // Show progress bar
-        progressWrapper.classList.remove('d-none');
-        resultMessage.innerHTML = '';
+        vizResult.innerHTML = vizHtml;
         
-        // Get CSRF token
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-        
-        // Submit batch STAPLE request
-        fetch('{% url "compute_batch_staple" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken
-            },
-            body: new URLSearchParams({
-                'batch_data': JSON.stringify(batchData),
-                'csrfmiddlewaretoken': csrfToken
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.task_id) {
-                pollBatchProgress(data.task_id, data.total_requests);
-            } else {
-                handleBatchError(data.error || 'Batch STAPLE computation failed');
-            }
-        })
-        .catch(error => {
-            handleBatchError('Error: ' + error.message);
-        });
-    });
-    
-    // Poll for batch STAPLE progress
-    function pollBatchProgress(taskId, totalRequests) {
-        const progressUrl = `/celery-progress/${taskId}/`;
-        let retryCount = 0;
-        
-        function poll() {
-            fetch(progressUrl)
-                .then(response => response.json())
-                .then(data => {
-                    retryCount = 0;
-                    
-                    const progress = data.progress || {};
-                    const current = progress.current || 0;
-                    const total = progress.total || 100;
-                    const description = progress.description || data.description || 'Processing...';
-                    const complete = data.complete || data.state === 'SUCCESS' || data.state === 'FAILURE';
-                    
-                    if (complete) {
-                        handleBatchComplete(data, totalRequests);
-                    } else {
-                        const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-                        updateBatchProgress(percent, description);
-                        setTimeout(poll, 1000);
-                    }
-                })
-                .catch(error => {
-                    retryCount++;
-                    if (retryCount < 5) {
-                        setTimeout(poll, 2000);
-                    } else {
-                        handleBatchError('Lost connection to server');
-                    }
-                });
+        // Store slice data globally for navigation
+        window.vizSliceData = {};
+        for (const [roiName, vizData] of Object.entries(visualizations)) {
+            window.vizSliceData[roiName] = {
+                slicePaths: vizData.slice_paths,
+                currentSlice: 0,
+                totalSlices: vizData.total_slices
+            };
         }
         
-        poll();
-    }
-    
-    // Update batch progress bar
-    function updateBatchProgress(percent, message) {
-        progressBar.style.width = percent + '%';
-        progressBar.setAttribute('aria-valuenow', percent);
-        progressBar.textContent = percent + '%';
-        progressInfo.textContent = message;
-    }
-    
-    // Handle batch completion
-    function handleBatchComplete(data, totalRequests) {
-        updateBatchProgress(100, 'Complete!');
+        // Add keyboard navigation
+        document.addEventListener('keydown', handleSliceKeyboard);
         
-        if (data.state === 'SUCCESS') {
-            const result = data.result || {};
-            const completed = result.completed || 0;
-            const failed = result.failed || 0;
-            
-            resultMessage.innerHTML = `
-                <div class="alert alert-success">
-                    <i class="bi bi-check-circle me-2"></i>
-                    <strong>Batch STAPLE Computation Complete!</strong><br>
-                    Successfully computed: ${completed} / ${totalRequests} ROIs<br>
-                    ${failed > 0 ? `Failed: ${failed} ROIs` : ''}
-                </div>
-            `;
-            
-            // Reload page after 3 seconds
-            setTimeout(() => {
-                window.location.reload();
-            }, 3000);
-        } else {
-            const errorMsg = data.result?.errors?.join(', ') || 'Unknown error occurred';
-            resultMessage.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    <strong>Error:</strong> ${errorMsg}
-                </div>
-            `;
-            
-            computeBtn.disabled = false;
-            computeBtn.innerHTML = '<i class="bi bi-calculator me-1"></i>Compute STAPLE';
-        }
-    }
-    
-    // Handle batch error
-    function handleBatchError(errorMsg) {
-        resultMessage.innerHTML = `
+    } else {
+        const errorMsg = data.result?.errors?.join(', ') || 'Unknown error occurred';
+        vizResult.innerHTML = `
             <div class="alert alert-danger">
                 <i class="bi bi-exclamation-triangle me-2"></i>
                 <strong>Error:</strong> ${errorMsg}
             </div>
         `;
-        
-        progressWrapper.classList.add('d-none');
-        computeBtn.disabled = false;
-        computeBtn.innerHTML = '<i class="bi bi-calculator me-1"></i>Compute STAPLE';
     }
-});
+    
+    generateBtn.disabled = false;
+    generateBtn.innerHTML = '<i class="bi bi-image me-2"></i>Generate Visualizations';
+}
+
+function updateSlice(roiName, sliceIdx) {
+    sliceIdx = parseInt(sliceIdx);
+    const data = window.vizSliceData[roiName];
+    if (!data) return;
+    
+    data.currentSlice = sliceIdx;
+    const safeName = roiName.replace(/\s+/g, '_');
+    
+    // Update image
+    document.getElementById(`slice_img_${safeName}`).src = `/media/${data.slicePaths[sliceIdx]}`;
+    
+    // Update slider and counter
+    document.getElementById(`slice_slider_${safeName}`).value = sliceIdx;
+    document.getElementById(`slice_num_${safeName}`).textContent = sliceIdx + 1;
+}
+
+function changeSlice(roiName, delta) {
+    const data = window.vizSliceData[roiName];
+    if (!data) return;
+    
+    let newSlice = data.currentSlice + delta;
+    if (newSlice < 0) newSlice = 0;
+    if (newSlice >= data.totalSlices) newSlice = data.totalSlices - 1;
+    
+    updateSlice(roiName, newSlice);
+}
+
+function handleSliceKeyboard(e) {
+    if (!window.vizSliceData) return;
+    
+    // Get first ROI (or could track active viewer)
+    const roiNames = Object.keys(window.vizSliceData);
+    if (roiNames.length === 0) return;
+    
+    const roiName = roiNames[0]; // Use first ROI for keyboard nav
+    
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        changeSlice(roiName, -1);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        changeSlice(roiName, 1);
+    }
+}
+
+function handleVizError(errorMsg) {
+    const vizResult = document.getElementById('vizResult');
+    const vizProgress = document.getElementById('vizProgress');
+    const generateBtn = document.getElementById('generateVizBtn');
+    
+    vizResult.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Error:</strong> ${errorMsg}
+        </div>
+    `;
+    
+    vizProgress.classList.add('d-none');
+    generateBtn.disabled = false;
+    generateBtn.innerHTML = '<i class="bi bi-image me-2"></i>Generate Visualizations';
+}
+
+function openVizFullscreen(imageSrc, roiName, slicePaths) {
+    if (typeof slicePaths === 'string') {
+        slicePaths = JSON.parse(slicePaths);
+    }
+    
+    // Store fullscreen data
+    window.fullscreenData = {
+        roiName: roiName,
+        slicePaths: slicePaths,
+        currentSlice: window.vizSliceData[roiName]?.currentSlice || 0
+    };
+    
+    document.getElementById('fullscreenVizImage').src = imageSrc;
+    document.getElementById('fullscreenSliceInfo').textContent = `Slice ${window.fullscreenData.currentSlice + 1} / ${slicePaths.length}`;
+    
+    const modal = new bootstrap.Modal(document.getElementById('fullscreenVizModal'));
+    modal.show();
+}
+
+function changeFullscreenSlice(delta) {
+    if (!window.fullscreenData) return;
+    
+    let newSlice = window.fullscreenData.currentSlice + delta;
+    if (newSlice < 0) newSlice = 0;
+    if (newSlice >= window.fullscreenData.slicePaths.length) newSlice = window.fullscreenData.slicePaths.length - 1;
+    
+    window.fullscreenData.currentSlice = newSlice;
+    document.getElementById('fullscreenVizImage').src = `/media/${window.fullscreenData.slicePaths[newSlice]}`;
+    document.getElementById('fullscreenSliceInfo').textContent = `Slice ${newSlice + 1} / ${window.fullscreenData.slicePaths.length}`;
+    
+    // Update main viewer too
+    if (window.vizSliceData[window.fullscreenData.roiName]) {
+        updateSlice(window.fullscreenData.roiName, newSlice);
+    }
+}
 </script>
+
+<!-- Visualization Modal -->
+<div class="modal fade" id="visualizationModal" tabindex="-1" aria-labelledby="visualizationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="visualizationModalLabel">
+                    <i class="bi bi-eye me-2"></i>Visualize ROIs - <span id="vizPatientId"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="vizSeriesId">
+                
+                <div class="alert alert-info mb-3">
+                    <strong>Modality:</strong> <span id="vizModality"></span>
+                </div>
+                
+                <!-- Settings -->
+                <h6 class="mb-3"><i class="bi bi-sliders me-2"></i>Visualization Settings</h6>
+                <div class="alert alert-info mb-3">
+                    <i class="bi bi-info-circle me-2"></i>All slices will be generated for interactive viewing
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="viz_window_center" class="form-label">Window Center</label>
+                        <input type="number" class="form-control form-control-sm" id="viz_window_center" placeholder="Auto">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="viz_window_width" class="form-label">Window Width</label>
+                        <input type="number" class="form-control form-control-sm" id="viz_window_width" placeholder="Auto">
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <strong>Windowing Presets:</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="setVizWindow(40, 400)">Soft Tissue</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="setVizWindow(80, 200)">Liver</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="setVizWindow(400, 1500)">Bone</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="setVizWindow(-600, 1500)">Lung</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="clearVizWindow()">Auto</button>
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="viz_include_staple" checked>
+                    <label class="form-check-label" for="viz_include_staple">
+                        Include STAPLE Contours (if available)
+                    </label>
+                </div>
+                
+                <hr>
+                
+                <!-- ROI Selection -->
+                <h6 class="mb-3"><i class="bi bi-bullseye me-2"></i>Select ROIs to Visualize</h6>
+                <div id="vizRoiList" class="mb-3">
+                    <!-- ROI checkboxes will be populated here -->
+                </div>
+                
+                <div class="d-grid">
+                    <button type="button" class="btn btn-success" id="generateVizBtn" onclick="generateVisualization()">
+                        <i class="bi bi-image me-2"></i>Generate Visualizations
+                    </button>
+                </div>
+                
+                <!-- Progress -->
+                <div id="vizProgress" class="mt-3 d-none">
+                    <div class="progress" style="height: 25px;">
+                        <div id="vizProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                             role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <div id="vizProgressInfo" class="text-center text-muted mt-2">Processing...</div>
+                </div>
+                
+                <!-- Results -->
+                <div id="vizResult" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fullscreen Visualization Modal -->
+<div class="modal fade" id="fullscreenVizModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-white" id="fullscreenSliceInfo">Slice 1 / 1</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex align-items-center justify-content-center position-relative">
+                <button class="btn btn-lg btn-light position-absolute start-0" 
+                        style="opacity: 0.7; z-index: 1000;" 
+                        onclick="changeFullscreenSlice(-1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <img id="fullscreenVizImage" src="" class="img-fluid" style="max-width: 90%; max-height: 90vh; object-fit: contain;" alt="Fullscreen Visualization">
+                <button class="btn btn-lg btn-light position-absolute end-0" 
+                        style="opacity: 0.7; z-index: 1000;" 
+                        onclick="changeFullscreenSlice(1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+            <div class="modal-footer border-0 justify-content-center">
+                <small class="text-white"><i class="bi bi-keyboard me-1"></i>Use arrow keys to navigate</small>
+            </div>
+        </div>
+    </div>
+</div>
 
 <style>
 .patient-card {

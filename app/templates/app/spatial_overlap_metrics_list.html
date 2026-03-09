@@ -1,0 +1,166 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Spatial Overlap Metrics Results{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-table me-2"></i>Spatial Overlap Metrics Results</h2>
+        <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-2"></i>Compute New Metrics
+        </a>
+    </div>
+
+    {% if results %}
+    <div class="alert alert-info mb-4">
+        <i class="bi bi-info-circle me-2"></i>
+        Showing <strong>{{ total_pairs }}</strong> ROI pair comparison(s) with computed metrics.
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Patient ID</th>
+                            <th>Reference ROI</th>
+                            <th>Target ROI</th>
+                            <th class="text-center">DSC</th>
+                            <th class="text-center">HD95 (mm)</th>
+                            <th class="text-center">MSD (mm)</th>
+                            <th class="text-center">APL (mm)</th>
+                            <th class="text-center">UMDC (mm)</th>
+                            <th class="text-center">OMDC (mm)</th>
+                            <th>Computed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in results %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>
+                                <span class="badge bg-secondary">{{ result.patient_id }}</span>
+                            </td>
+                            <td>
+                                <div>
+                                    <strong>{{ result.reference_roi_name }}</strong>
+                                    <span class="badge {% if result.reference_type == 'STAPLE' %}bg-warning text-dark{% else %}bg-info{% endif %} ms-1">
+                                        {% if result.reference_type == 'STAPLE' %}
+                                        <i class="bi bi-star-fill me-1"></i>
+                                        {% endif %}
+                                        {{ result.reference_type }}
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <div>
+                                    <strong>{{ result.target_roi_name }}</strong>
+                                    <span class="badge {% if result.target_type == 'STAPLE' %}bg-warning text-dark{% else %}bg-info{% endif %} ms-1">
+                                        {% if result.target_type == 'STAPLE' %}
+                                        <i class="bi bi-star-fill me-1"></i>
+                                        {% endif %}
+                                        {{ result.target_type }}
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                {% if result.metrics.DSC != None %}
+                                    <span class="badge bg-primary">{{ result.metrics.DSC|floatformat:4 }}</span>
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if result.metrics.HD95 != None %}
+                                    {{ result.metrics.HD95|floatformat:2 }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if result.metrics.MSD != None %}
+                                    {{ result.metrics.MSD|floatformat:2 }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if result.metrics.APL != None %}
+                                    {{ result.metrics.APL|floatformat:2 }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if result.metrics.UMDC != None %}
+                                    {{ result.metrics.UMDC|floatformat:2 }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if result.metrics.OMDC != None %}
+                                    {{ result.metrics.OMDC|floatformat:2 }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {% if result.created_at %}
+                                        {{ result.created_at|date:"Y-m-d H:i" }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metrics Legend -->
+    <div class="card mt-4">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Metrics Legend</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>DSC:</strong> Dice Similarity Coefficient (0-1, higher is better)
+                </div>
+                <div class="col-md-4">
+                    <strong>HD95:</strong> Hausdorff Distance 95th percentile (mm, lower is better)
+                </div>
+                <div class="col-md-4">
+                    <strong>MSD:</strong> Mean Surface Distance (mm, lower is better)
+                </div>
+                <div class="col-md-4 mt-2">
+                    <strong>APL:</strong> Added Path Length (mm, lower is better)
+                </div>
+                <div class="col-md-4 mt-2">
+                    <strong>UMDC:</strong> Undercontouring Mean Distance to Conformity (mm)
+                </div>
+                <div class="col-md-4 mt-2">
+                    <strong>OMDC:</strong> Overcontouring Mean Distance to Conformity (mm)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="alert alert-warning">
+        <h5 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>No Results Found</h5>
+        <p class="mb-0">
+            No spatial overlap metrics have been computed yet. 
+            <a href="{% url 'spatial_overlap_metrics' %}" class="alert-link">Click here to compute metrics</a>.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

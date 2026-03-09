@@ -2,10 +2,14 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.conf import settings
 from app.models import DICOMFileArchive, Patient, DICOMStudy, DICOMSeries, DICOMInstance, RTStructROI
 from app.utils.dicom_processor import process_dicom_archive
 from app.utils.extract_roi_information import extract_roi_information
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _delete_instance_files(instances):
@@ -425,93 +429,129 @@ def nifti_convert(request):
 
 
 def nifti_list(request):
-    """View to list all NIfTI files grouped by patient, showing image series with their structure sets and common ROIs."""
-    from django.db.models import Count, Q
+    """View to list all patients with their NIfTI structure sets and ROI information."""
     import json
     from pathlib import Path
-    from django.conf import settings
-    from collections import Counter
+    from collections import defaultdict, Counter
     
-    # Get all image series (CT/MR) that have NIfTI files
-    image_series = DICOMSeries.objects.filter(
-        nifti_file_path__isnull=False
+    # Get all patients who have any NIfTI data (either image or RTStruct)
+    patients_with_nifti = Patient.objects.filter(
+        dicomstudy__dicomseries__nifti_file_path__isnull=False
     ).exclude(
-        nifti_file_path='',
-        modality='RTSTRUCT'
-    ).select_related(
-        'study',
-        'study__patient'
-    ).order_by(
-        'study__patient__patient_id',
-        'study__study_instance_uid',
-        'series_instance_uid'
-    )
+        dicomstudy__dicomseries__nifti_file_path=''
+    ).distinct().order_by('patient_id')
     
-    # Group by patient
     patients_data = []
-    for img_series in image_series:
-        # Find all RTStruct series that reference this image series
-        rtstruct_series = DICOMSeries.objects.filter(
-            modality='RTSTRUCT',
-            dicominstance__referenced_series_instance_uid=img_series,
-            nifti_file_path__isnull=False
+    
+    for patient in patients_with_nifti:
+        # Collect all image series across all studies for this patient
+        all_image_series = []
+        all_structure_sets = []
+        all_roi_names = []
+        
+        # Get all studies for this patient that have NIfTI data
+        studies = DICOMStudy.objects.filter(
+            patient=patient,
+            dicomseries__nifti_file_path__isnull=False
         ).exclude(
-            nifti_file_path=''
+            dicomseries__nifti_file_path=''
         ).distinct()
         
-        # Get structure counts for each RTStruct series and collect all structure names
-        rtstruct_data = []
-        all_structure_names = []
-        
-        for rtstruct in rtstruct_series:
-            # Read metadata to get structure count
-            metadata_path = Path(settings.MEDIA_ROOT) / rtstruct.nifti_file_path / "rtstruct_metadata.json"
-            structure_count = 0
-            structure_names = []
+        for study in studies:
+            # Get image series with NIfTI (exclude RTSTRUCT - only get CT/MR/PT/etc.)
+            image_series_list = DICOMSeries.objects.filter(
+                study=study,
+                nifti_file_path__isnull=False
+            ).exclude(
+                nifti_file_path=''
+            ).exclude(
+                modality='RTSTRUCT'
+            )
             
-            if metadata_path.exists():
-                try:
-                    with open(metadata_path, 'r') as f:
-                        metadata = json.load(f)
-                        structure_count = metadata.get('converted_count', 0)
-                        structure_names = [roi['name'] for roi in metadata.get('rois', [])]
-                        all_structure_names.extend(structure_names)
-                except Exception:
-                    pass
-            
-            rtstruct_data.append({
-                'series': rtstruct,
-                'series_id': rtstruct.id,
-                'structure_count': structure_count,
-                'structure_names': structure_names
-            })
+            for img_series in image_series_list:
+                all_image_series.append({
+                    'series': img_series,
+                    'study': study
+                })
+                
+                # Find all RTStruct series that reference this image series and have NIfTI
+                rtstruct_series = DICOMSeries.objects.filter(
+                    modality='RTSTRUCT',
+                    dicominstance__referenced_series_instance_uid=img_series,
+                    nifti_file_path__isnull=False
+                ).exclude(
+                    nifti_file_path=''
+                ).distinct()
+                
+                for rtstruct in rtstruct_series:
+                    metadata_path = Path(settings.MEDIA_ROOT) / rtstruct.nifti_file_path / "rtstruct_metadata.json"
+                    roi_count = 0
+                    roi_names = []
+                    
+                    if metadata_path.exists():
+                        try:
+                            with open(metadata_path, 'r') as f:
+                                metadata = json.load(f)
+                                roi_count = metadata.get('converted_count', 0)
+                                roi_names = [roi['name'] for roi in metadata.get('rois', [])]
+                                all_roi_names.extend(roi_names)
+                        except Exception:
+                            pass
+                    
+                    all_structure_sets.append({
+                        'series': rtstruct,
+                        'series_id': rtstruct.id,
+                        'roi_count': roi_count,
+                        'roi_names': roi_names,
+                        'roi_names_with_staple': [],  # Will be populated later
+                        'series_uid_short': rtstruct.series_instance_uid[:30] + '...' if len(rtstruct.series_instance_uid) > 30 else rtstruct.series_instance_uid,
+                        'image_series': img_series,
+                        'study': study
+                    })
         
         # Find common ROIs (appearing in 2+ structure sets)
-        structure_counter = Counter(all_structure_names)
+        roi_counter = Counter(all_roi_names)
         common_rois = [
             {
                 'name': name,
-                'count': count,
-                'available_in': [
-                    rs['series_id'] for rs in rtstruct_data 
-                    if name in rs['structure_names']
-                ]
+                'count': count
             }
-            for name, count in structure_counter.items()
+            for name, count in roi_counter.items()
             if count >= 2
         ]
-        
-        # Sort by count (descending) then by name
         common_rois.sort(key=lambda x: (-x['count'], x['name']))
         
-        patients_data.append({
-            'patient': img_series.study.patient,
-            'study': img_series.study,
-            'image_series': img_series,
-            'rtstruct_series': rtstruct_data,
-            'common_rois': common_rois,
-            'has_common_rois': len(common_rois) > 0
-        })
+        # Check for STAPLE contours using database relationships
+        # Get all ROI names that have STAPLE computed for this patient
+        staple_rois = set()
+        
+        # Query RTStructROI entries that belong to this patient and have staple_roi set
+        patient_rtstruct_rois = RTStructROI.objects.filter(
+            instance__series__study__patient=patient,
+            staple_roi__isnull=False
+        ).values_list('roi_name', flat=True).distinct()
+        
+        staple_rois = set(patient_rtstruct_rois)
+        
+        # Mark which ROIs have STAPLE in each structure set
+        for ss in all_structure_sets:
+            ss['roi_names_with_staple'] = [
+                {'name': roi_name, 'has_staple': roi_name in staple_rois}
+                for roi_name in ss['roi_names']
+            ]
+        
+        # Only add patient if they have structure sets
+        if all_structure_sets:
+            patients_data.append({
+                'patient': patient,
+                'image_series_list': all_image_series,
+                'structure_sets': all_structure_sets,
+                'total_structure_sets': len(all_structure_sets),
+                'common_rois': common_rois,
+                'total_unique_rois': len(roi_counter),
+                'total_staple_rois': len(staple_rois),
+                'staple_rois': sorted(list(staple_rois))
+            })
     
     return render(request, "app/nifti_list.html", {"patients_data": patients_data})
 
@@ -588,9 +628,11 @@ def compute_batch_staple(request):
     """View to trigger batch STAPLE contour computation for multiple ROIs across multiple patients."""
     from app.tasks import compute_batch_staple_task
     import json
+    from collections import defaultdict
+    from pathlib import Path
     
     # Get batch requests from POST data
-    # Format: [{image_series_id, structure_name, rtstruct_series_ids, threshold}, ...]
+    # New format: [{roi_name, threshold}, ...]
     try:
         batch_data = json.loads(request.POST.get('batch_data', '[]'))
     except json.JSONDecodeError:
@@ -600,7 +642,7 @@ def compute_batch_staple(request):
                 "error": "Invalid batch data format"
             })
         messages.error(request, "Invalid batch data format.")
-        return redirect("nifti_list")
+        return redirect("staple_computation")
     
     if not batch_data:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -609,18 +651,70 @@ def compute_batch_staple(request):
                 "error": "No STAPLE computations selected"
             })
         messages.error(request, "No STAPLE computations selected.")
-        return redirect("nifti_list")
+        return redirect("staple_computation")
     
-    # Validate each request
+    # Build STAPLE requests from ROI-centric data
+    # For each ROI, find all patients where it appears in 2+ structure sets
     staple_requests = []
+    
     for item in batch_data:
         try:
-            staple_requests.append({
-                'image_series_id': int(item['image_series_id']),
-                'structure_name': item['structure_name'],
-                'rtstruct_series_ids': [int(sid) for sid in item['rtstruct_series_ids']],
-                'threshold': float(item.get('threshold', 0.95))
-            })
+            roi_name = item['roi_name']
+            threshold = float(item.get('threshold', 0.95))
+            
+            # Find all RTStruct series with NIfTI that contain this ROI
+            rtstruct_series = DICOMSeries.objects.filter(
+                modality='RTSTRUCT',
+                nifti_file_path__isnull=False
+            ).exclude(
+                nifti_file_path=''
+            ).select_related('study__patient').prefetch_related('dicominstance_set')
+            
+            # Group by patient and image series
+            patient_image_rtstruct = defaultdict(lambda: defaultdict(list))
+            
+            for rtstruct in rtstruct_series:
+                # Check if this RTStruct has the ROI
+                metadata_path = Path(settings.MEDIA_ROOT) / rtstruct.nifti_file_path / "rtstruct_metadata.json"
+                if not metadata_path.exists():
+                    continue
+                
+                try:
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        roi_names = [roi['name'] for roi in metadata.get('rois', [])]
+                        
+                        if roi_name not in roi_names:
+                            continue
+                        
+                        # Get the referenced image series
+                        image_series = None
+                        for instance in rtstruct.dicominstance_set.all():
+                            if instance.referenced_series_instance_uid:
+                                image_series = instance.referenced_series_instance_uid
+                                break
+                        
+                        if not image_series:
+                            continue
+                        
+                        patient_id = rtstruct.study.patient.patient_id
+                        patient_image_rtstruct[patient_id][image_series.id].append(rtstruct.id)
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to read metadata for {rtstruct.series_instance_uid}: {e}")
+                    continue
+            
+            # Create STAPLE requests for patients with 2+ structure sets
+            for patient_id, image_series_dict in patient_image_rtstruct.items():
+                for image_series_id, rtstruct_ids in image_series_dict.items():
+                    if len(rtstruct_ids) >= 2:
+                        staple_requests.append({
+                            'image_series_id': image_series_id,
+                            'structure_name': roi_name,
+                            'rtstruct_series_ids': rtstruct_ids,
+                            'threshold': threshold
+                        })
+                        
         except (KeyError, ValueError) as e:
             if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                 return JsonResponse({
@@ -628,7 +722,16 @@ def compute_batch_staple(request):
                     "error": f"Invalid request data: {str(e)}"
                 })
             messages.error(request, f"Invalid request data: {str(e)}")
-            return redirect("nifti_list")
+            return redirect("staple_computation")
+    
+    if not staple_requests:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({
+                "success": False,
+                "error": "No eligible STAPLE computations found (need 2+ structure sets per patient)"
+            })
+        messages.error(request, "No eligible STAPLE computations found.")
+        return redirect("staple_computation")
     
     # Enqueue the batch STAPLE computation task
     task = compute_batch_staple_task.delay(staple_requests)
@@ -643,4 +746,722 @@ def compute_batch_staple(request):
         })
     
     messages.info(request, f"Batch STAPLE computation task queued for {len(staple_requests)} ROIs. This will run in the background.")
+    return redirect("staple_computation")
+
+
+def batch_staple_status(request, task_id):
+    """API endpoint to check the status of a batch STAPLE computation task."""
+    from celery.result import AsyncResult
+    
+    task = AsyncResult(task_id)
+    
+    response_data = {
+        'state': task.state,
+        'current': 0,
+        'total': 0,
+        'status': str(task.info),
+        'complete': False
+    }
+    
+    if task.state == 'PENDING':
+        response_data.update({
+            'current': 0,
+            'total': 0,
+            'status': 'Task is waiting to start...'
+        })
+    elif task.state == 'PROGRESS':
+        info = task.info
+        response_data.update({
+            'current': info.get('current', 0),
+            'total': info.get('total', 0),
+            'status': info.get('description', 'Processing...')
+        })
+    elif task.state == 'SUCCESS':
+        result = task.result
+        response_data.update({
+            'current': result.get('total_requests', 0),
+            'total': result.get('total_requests', 0),
+            'status': 'Complete!',
+            'complete': True,
+            'result': result
+        })
+    elif task.state == 'FAILURE':
+        response_data.update({
+            'status': 'Task failed',
+            'complete': True,
+            'error': str(task.info)
+        })
+    
+    return JsonResponse(response_data)
+
+
+def visualize_patient_series(request, series_id):
+    """View to display visualization options for a patient's image series."""
+    from app.models import DICOMSeries, DICOMInstance
+    from pathlib import Path
+    import json
+    
+    series = get_object_or_404(
+        DICOMSeries.objects.select_related('study', 'study__patient'),
+        id=series_id
+    )
+    
+    # Check if NIfTI file exists
+    if not series.nifti_file_path:
+        messages.error(request, "NIfTI file not found for this series. Please convert to NIfTI first.")
+        return redirect("nifti_list")
+    
+    # Find all RTStruct series that reference this image series
+    rtstruct_series = DICOMSeries.objects.filter(
+        modality='RTSTRUCT',
+        dicominstance__referenced_series_instance_uid=series,
+        nifti_file_path__isnull=False
+    ).exclude(nifti_file_path='').distinct()
+    
+    # Collect all available ROIs with their structure sets
+    all_rois = {}
+    for rtstruct in rtstruct_series:
+        nifti_dir = Path(settings.MEDIA_ROOT) / rtstruct.nifti_file_path
+        metadata_path = nifti_dir / "rtstruct_metadata.json"
+        
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    for roi in metadata.get('rois', []):
+                        roi_name = roi['name']
+                        if roi_name not in all_rois:
+                            all_rois[roi_name] = {
+                                'name': roi_name,
+                                'structure_sets': [],
+                                'has_staple': False
+                            }
+                        
+                        all_rois[roi_name]['structure_sets'].append({
+                            'series_id': rtstruct.id,
+                            'series_uid': rtstruct.series_instance_uid
+                        })
+            except Exception as e:
+                logger.warning(f"Failed to read metadata for {rtstruct.id}: {e}")
+    
+    # Check for STAPLE contours
+    from app.utils.dcm_to_nifti_converter import sanitize_for_path
+    patient_id = sanitize_for_path(series.study.patient.patient_id)
+    study_uid = sanitize_for_path(series.study.study_instance_uid)
+    series_uid = sanitize_for_path(series.series_instance_uid)
+    staple_dir = Path(settings.MEDIA_ROOT) / "nifti_files" / patient_id / study_uid / series_uid / "staple"
+    
+    if staple_dir.exists():
+        for roi_name in all_rois.keys():
+            safe_roi_name = sanitize_for_path(roi_name)
+            staple_path = staple_dir / f"staple_{safe_roi_name}.nii.gz"
+            if staple_path.exists():
+                all_rois[roi_name]['has_staple'] = True
+    
+    # Sort ROIs by name
+    rois_list = sorted(all_rois.values(), key=lambda x: x['name'])
+    
+    return render(request, "app/visualize_series.html", {
+        "series": series,
+        "rois": rois_list,
+        "patient": series.study.patient,
+        "study": series.study
+    })
+
+
+@require_POST
+def generate_visualization(request):
+    """Generate visualization for selected ROIs using Celery."""
+    from app.tasks import generate_visualization_task
+    import json
+    
+    series_id = request.POST.get('series_id')
+    roi_names = request.POST.getlist('roi_names[]')
+    include_staple = request.POST.get('include_staple', 'true').lower() == 'true'
+    window_center = request.POST.get('window_center', '')
+    window_width = request.POST.get('window_width', '')
+    
+    # Parse windowing parameters
+    try:
+        window_center = float(window_center) if window_center else None
+        window_width = float(window_width) if window_width else None
+    except ValueError:
+        window_center = None
+        window_width = None
+    
+    if not series_id or not roi_names:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({
+                "success": False,
+                "error": "Missing required parameters"
+            })
+        messages.error(request, "Missing required parameters for visualization.")
+        return redirect("nifti_list")
+    
+    try:
+        series_id = int(series_id)
+    except ValueError:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({
+                "success": False,
+                "error": "Invalid series ID"
+            })
+        messages.error(request, "Invalid series ID.")
+        return redirect("nifti_list")
+    
+    # Enqueue the visualization task (all slices will be generated)
+    task = generate_visualization_task.delay(
+        image_series_id=series_id,
+        roi_names=roi_names,
+        include_staple=include_staple,
+        window_center=window_center,
+        window_width=window_width
+    )
+    
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({
+            "success": True,
+            "message": f"Visualization task queued for {len(roi_names)} ROI(s)",
+            "task_status": "queued",
+            "task_id": task.id,
+            "roi_count": len(roi_names)
+        })
+    
+    messages.info(request, f"Visualization task queued for {len(roi_names)} ROI(s). This will run in the background.")
     return redirect("nifti_list")
+
+
+def get_series_rois(request, series_id):
+    """API endpoint to get all ROIs for a given image series."""
+    import json
+    from pathlib import Path
+    
+    try:
+        image_series = get_object_or_404(DICOMSeries, id=series_id)
+        
+        # Find all RTStruct series that reference this image series
+        rtstruct_series = DICOMSeries.objects.filter(
+            modality='RTSTRUCT',
+            dicominstance__referenced_series_instance_uid=image_series,
+            nifti_file_path__isnull=False
+        ).exclude(
+            nifti_file_path=''
+        ).distinct()
+        
+        # Collect all ROIs
+        all_rois = {}
+        
+        for rtstruct in rtstruct_series:
+            metadata_path = Path(settings.MEDIA_ROOT) / rtstruct.nifti_file_path / "rtstruct_metadata.json"
+            
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        for roi in metadata.get('rois', []):
+                            roi_name = roi['name']
+                            if roi_name not in all_rois:
+                                all_rois[roi_name] = {
+                                    'name': roi_name,
+                                    'count': 0,
+                                    'has_staple': False
+                                }
+                            all_rois[roi_name]['count'] += 1
+                except Exception as e:
+                    logger.warning(f"Failed to read metadata: {e}")
+        
+        # Check for STAPLE contours using database relationships
+        # Get ROI names that have STAPLE computed for this patient
+        patient = image_series.study.patient
+        staple_roi_names = set(RTStructROI.objects.filter(
+            instance__series__study__patient=patient,
+            staple_roi__isnull=False
+        ).values_list('roi_name', flat=True).distinct())
+        
+        # Mark which ROIs have STAPLE
+        for roi_name in all_rois.keys():
+            if roi_name in staple_roi_names:
+                all_rois[roi_name]['has_staple'] = True
+        
+        # Convert to list and sort by name
+        rois_list = sorted(all_rois.values(), key=lambda x: x['name'])
+        
+        return JsonResponse({
+            'success': True,
+            'rois': rois_list,
+            'total': len(rois_list)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching ROIs for series {series_id}: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'rois': []
+        }, status=500)
+
+
+def view_visualizations(request, series_id):
+    """View to display generated visualizations for a series."""
+    from app.models import DICOMSeries
+    from pathlib import Path
+    import glob
+    
+    series = get_object_or_404(
+        DICOMSeries.objects.select_related('study', 'study__patient'),
+        id=series_id
+    )
+    
+    # Find all visualization images for this series
+    vis_dir = Path(settings.MEDIA_ROOT) / "visualizations"
+    visualizations = []
+    
+    if vis_dir.exists():
+        # Look for visualization files
+        # We'll need to store metadata about which visualizations belong to which series
+        # For now, we'll list all recent visualizations
+        vis_files = sorted(vis_dir.glob("vis_*.png"), key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        for vis_file in vis_files[:20]:  # Show last 20 visualizations
+            relative_path = vis_file.relative_to(settings.MEDIA_ROOT)
+            visualizations.append({
+                'path': str(relative_path),
+                'filename': vis_file.name,
+                'created': vis_file.stat().st_mtime
+            })
+    
+    return render(request, "app/view_visualizations.html", {
+        "series": series,
+        "visualizations": visualizations,
+        "patient": series.study.patient,
+        "study": series.study
+    })
+
+
+def staple_computation(request):
+    """
+    STAPLE computation page - ROI-centric view.
+    Shows all ROIs with NIfTI files, grouped by ROI name.
+    Displays structure set count and patient count for each ROI.
+    """
+    import json
+    from pathlib import Path
+    from collections import defaultdict
+    
+    # Dictionary to store ROI information: roi_name -> {patients: set, structure_sets: list, image_series: set}
+    roi_data = defaultdict(lambda: {
+        'patients': set(),
+        'structure_sets': [],
+        'image_series': set(),
+        'patient_structure_counts': defaultdict(int)  # patient_id -> count of structure sets with this ROI
+    })
+    
+    # Get all RTSTRUCT series with NIfTI files
+    rtstruct_series = DICOMSeries.objects.filter(
+        modality='RTSTRUCT',
+        nifti_file_path__isnull=False
+    ).exclude(
+        nifti_file_path=''
+    ).select_related(
+        'study__patient'
+    ).prefetch_related(
+        'dicominstance_set'
+    )
+    
+    for rtstruct in rtstruct_series:
+        # Read metadata to get ROI names
+        metadata_path = Path(settings.MEDIA_ROOT) / rtstruct.nifti_file_path / "rtstruct_metadata.json"
+        
+        if not metadata_path.exists():
+            continue
+        
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                rois = metadata.get('rois', [])
+                
+                # Get the referenced image series
+                image_series = None
+                for instance in rtstruct.dicominstance_set.all():
+                    if instance.referenced_series_instance_uid:
+                        image_series = instance.referenced_series_instance_uid
+                        break
+                
+                if not image_series:
+                    continue
+                
+                patient = rtstruct.study.patient
+                patient_id = patient.patient_id
+                
+                for roi in rois:
+                    roi_name = roi['name']
+                    
+                    # Add patient
+                    roi_data[roi_name]['patients'].add(patient_id)
+                    
+                    # Add structure set info
+                    roi_data[roi_name]['structure_sets'].append({
+                        'series_id': rtstruct.id,
+                        'series_uid': rtstruct.series_instance_uid,
+                        'patient_id': patient_id,
+                        'patient_name': patient.patient_name,
+                        'image_series_id': image_series.id,
+                        'image_modality': image_series.modality
+                    })
+                    
+                    # Add image series
+                    roi_data[roi_name]['image_series'].add(image_series.id)
+                    
+                    # Count structure sets per patient for this ROI
+                    roi_data[roi_name]['patient_structure_counts'][patient_id] += 1
+                    
+        except Exception as e:
+            logger.warning(f"Failed to read metadata for {rtstruct.series_instance_uid}: {e}")
+            continue
+    
+    # Convert to list format for template
+    roi_list = []
+    for roi_name, data in roi_data.items():
+        # Check if STAPLE can be computed (ROI appears in multiple structure sets for at least one patient)
+        can_compute_staple = any(count >= 2 for count in data['patient_structure_counts'].values())
+        
+        # Get patients where this ROI appears in multiple structure sets
+        staple_eligible_patients = [
+            patient_id for patient_id, count in data['patient_structure_counts'].items() if count >= 2
+        ]
+        
+        # Check if STAPLE has been computed for this ROI (check database)
+        # Get patients where STAPLE has been computed for this ROI
+        staple_computed_patients = RTStructROI.objects.filter(
+            roi_name=roi_name,
+            staple_roi__isnull=False
+        ).values_list('instance__series__study__patient__patient_id', flat=True).distinct()
+        
+        staple_computed_patients_list = list(staple_computed_patients)
+        staple_computed_count = len(staple_computed_patients_list)
+        
+        # Determine status
+        if staple_computed_count > 0:
+            staple_status = 'computed'
+            staple_status_label = f'Computed ({staple_computed_count} patient{"s" if staple_computed_count > 1 else ""})'
+            staple_status_class = 'success'
+        elif can_compute_staple:
+            staple_status = 'eligible'
+            staple_status_label = 'Not computed'
+            staple_status_class = 'warning'
+        else:
+            staple_status = 'ineligible'
+            staple_status_label = 'Not eligible'
+            staple_status_class = 'secondary'
+        
+        roi_list.append({
+            'name': roi_name,
+            'patient_count': len(data['patients']),
+            'structure_set_count': len(data['structure_sets']),
+            'image_series_count': len(data['image_series']),
+            'structure_sets': data['structure_sets'],
+            'can_compute_staple': can_compute_staple,
+            'staple_eligible_patients': staple_eligible_patients,
+            'staple_eligible_count': len(staple_eligible_patients),
+            'staple_status': staple_status,
+            'staple_status_label': staple_status_label,
+            'staple_status_class': staple_status_class,
+            'staple_computed_count': staple_computed_count,
+            'staple_computed_patients': staple_computed_patients_list
+        })
+    
+    # Sort by ROI name
+    roi_list.sort(key=lambda x: x['name'])
+    
+    return render(request, "app/staple_computation.html", {
+        "roi_list": roi_list,
+        "total_rois": len(roi_list)
+    })
+
+
+def spatial_overlap_metrics(request):
+    """
+    Spatial Overlap Metrics computation page - ROI name-based approach.
+    Users select ROI names, and system auto-generates all pairwise combinations.
+    """
+    from app.utils.spatial_overlap_metrics import get_rois_for_series, get_roi_nifti_path
+    from collections import defaultdict
+    import json
+    
+    # Build ROI name-based data structure
+    # roi_name -> {'regular_instances': [...], 'staple_instances': [...]}
+    roi_data = defaultdict(lambda: {
+        'roi_name': '',
+        'regular_instances': [],
+        'staple_instances': [],
+        'total_instances': 0,
+        'has_staple': False,
+        'seen_staple_ids': set()  # Track STAPLE IDs per ROI name
+    })
+    
+    # Get all image series with NIfTI files
+    image_series_list = DICOMSeries.objects.filter(
+        nifti_file_path__isnull=False
+    ).exclude(
+        nifti_file_path='',
+        modality='RTSTRUCT'
+    ).select_related('study__patient').order_by('study__patient__patient_id', 'modality')
+    
+    for img_series in image_series_list:
+        # Get all ROIs for this series (already filtered for NIfTI availability)
+        rois = get_rois_for_series(img_series.series_instance_uid)
+        
+        for roi in rois:
+            roi_name = roi.roi_name
+            roi_type = 'STAPLE' if roi.staple_roi else 'RTStruct'
+            
+            # Get source structure set information
+            if roi.instance:
+                source_series = roi.instance.series
+                source_series_uid_short = source_series.series_instance_uid[-8:]
+                source_label = f"RTStruct (...{source_series_uid_short})"
+            elif roi.staple_roi:
+                source_label = 'STAPLE Consensus'
+            else:
+                source_label = 'Unknown'
+            
+            instance_data = {
+                'roi_id': roi.id,
+                'roi_name': roi_name,
+                'roi_type': roi_type,
+                'series_id': img_series.id,
+                'series_uid': img_series.series_instance_uid,
+                'series_modality': img_series.modality,
+                'patient_id': img_series.study.patient.patient_id,
+                'patient_name': img_series.study.patient.patient_name or '',
+                'source_label': source_label
+            }
+            
+            roi_data[roi_name]['roi_name'] = roi_name
+            
+            if roi_type == 'STAPLE':
+                # Only add STAPLE instance once per ROI name (deduplicate by ROI ID)
+                if roi.id not in roi_data[roi_name]['seen_staple_ids']:
+                    roi_data[roi_name]['seen_staple_ids'].add(roi.id)
+                    roi_data[roi_name]['staple_instances'].append(instance_data)
+                    roi_data[roi_name]['has_staple'] = True
+                    roi_data[roi_name]['total_instances'] += 1
+            else:
+                roi_data[roi_name]['regular_instances'].append(instance_data)
+                roi_data[roi_name]['total_instances'] += 1
+    
+    # Convert to lists and sort
+    roi_list = []
+    roi_list_json = []
+    
+    for roi_name, data in roi_data.items():
+        roi_list.append(data)
+        roi_list_json.append({
+            'roi_name': roi_name,
+            'regular_instances': data['regular_instances'],
+            'staple_instances': data['staple_instances'],
+            'total_instances': data['total_instances'],
+            'has_staple': data['has_staple']
+        })
+    
+    # Sort by ROI name
+    roi_list.sort(key=lambda x: x['roi_name'])
+    roi_list_json.sort(key=lambda x: x['roi_name'])
+    
+    return render(request, "app/spatial_overlap_metrics.html", {
+        "roi_list": roi_list,
+        "roi_data_json": json.dumps(roi_list_json),
+        "total_roi_names": len(roi_list)
+    })
+
+
+@require_POST
+def compute_overlap_metrics(request):
+    """API endpoint to trigger Celery task for computing spatial overlap metrics."""
+    from app.tasks import compute_spatial_overlap_task
+    import json
+    
+    try:
+        # Get parameters from POST request
+        roi_pairs_json = request.POST.get('roi_pairs')
+        
+        if not roi_pairs_json:
+            return JsonResponse({
+                "success": False,
+                "error": "No ROI pairs provided"
+            })
+        
+        roi_pairs = json.loads(roi_pairs_json)
+        
+        if not roi_pairs or len(roi_pairs) == 0:
+            return JsonResponse({
+                "success": False,
+                "error": "No ROI pairs selected"
+            })
+        
+        # Trigger Celery task
+        logger.info(f"Triggering Celery task for {len(roi_pairs)} ROI pairs")
+        task = compute_spatial_overlap_task.delay(roi_pairs)
+        
+        return JsonResponse({
+            "success": True,
+            "task_id": task.id,
+            "message": f"Started computation for {len(roi_pairs)} ROI pair(s)",
+            "total_pairs": len(roi_pairs)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting overlap metrics task: {e}")
+        return JsonResponse({
+            "success": False,
+            "error": str(e)
+        }, status=500)
+
+
+def spatial_overlap_results(request, task_id):
+    """Display spatial overlap computation results for a completed task."""
+    from celery.result import AsyncResult
+    
+    task = AsyncResult(task_id)
+    
+    context = {
+        'task_id': task_id,
+        'task_state': task.state,
+        'task_ready': task.ready(),
+    }
+    
+    if task.ready():
+        if task.successful():
+            result = task.result
+            context['success'] = True
+            context['results'] = result.get('pair_results', [])
+            context['total_pairs'] = result.get('total_pairs', 0)
+            context['completed'] = result.get('completed', 0)
+            context['failed'] = result.get('failed', 0)
+            context['errors'] = result.get('errors', [])
+        else:
+            context['success'] = False
+            context['error'] = str(task.result) if task.result else 'Unknown error'
+    
+    return render(request, 'app/spatial_overlap_results.html', context)
+
+
+def spatial_overlap_metrics_list(request):
+    """Display all computed spatial overlap metrics from database in a table."""
+    from collections import defaultdict
+    from django.db.models import Q
+    from app.models import StructureROIPair
+    
+    # Get all StructureROIPair entries
+    pairs = StructureROIPair.objects.select_related(
+        'reference_rt_structure_roi__instance__series__study__patient',
+        'target_rt_structure_roi__instance__series__study__patient',
+        'reference_rt_structure_roi__staple_roi',
+        'target_rt_structure_roi__staple_roi'
+    ).order_by('-created_at')
+    
+    # Group metrics by ROI pair
+    grouped_results = defaultdict(lambda: {
+        'reference_roi': None,
+        'target_roi': None,
+        'reference_roi_name': '',
+        'target_roi_name': '',
+        'reference_type': '',
+        'target_type': '',
+        'patient_id': '',
+        'metrics': {},
+        'created_at': None
+    })
+    
+    for pair in pairs:
+        # Create unique key for this ROI pair
+        key = f"{pair.reference_rt_structure_roi.id}_{pair.target_rt_structure_roi.id}"
+        
+        if not grouped_results[key]['reference_roi']:
+            # First time seeing this pair, set basic info
+            ref_roi = pair.reference_rt_structure_roi
+            target_roi = pair.target_rt_structure_roi
+            
+            grouped_results[key]['reference_roi'] = ref_roi
+            grouped_results[key]['target_roi'] = target_roi
+            grouped_results[key]['reference_roi_name'] = ref_roi.roi_name
+            grouped_results[key]['target_roi_name'] = target_roi.roi_name
+            grouped_results[key]['reference_type'] = 'STAPLE' if ref_roi.staple_roi else 'RTStruct'
+            grouped_results[key]['target_type'] = 'STAPLE' if target_roi.staple_roi else 'RTStruct'
+            grouped_results[key]['created_at'] = pair.created_at
+            
+            # Get patient ID
+            if ref_roi.instance:
+                grouped_results[key]['patient_id'] = ref_roi.instance.series.study.patient.patient_id
+            elif target_roi.instance:
+                grouped_results[key]['patient_id'] = target_roi.instance.series.study.patient.patient_id
+        
+        # Add metric to this pair
+        if pair.metric_calculated:
+            grouped_results[key]['metrics'][pair.metric_calculated] = pair.metric_value
+    
+    # Convert to list and sort by creation date
+    results_list = sorted(
+        grouped_results.values(),
+        key=lambda x: x['created_at'] if x['created_at'] else '',
+        reverse=True
+    )
+    
+    context = {
+        'results': results_list,
+        'total_pairs': len(results_list)
+    }
+    
+    return render(request, 'app/spatial_overlap_metrics_list.html', context)
+
+
+def get_series_rois_with_nifti(request, series_id):
+    """API endpoint to get all ROIs with available NIfTI files for a given image series."""
+    from app.utils.spatial_overlap_metrics import get_rois_for_series, get_roi_nifti_path
+    
+    try:
+        image_series = get_object_or_404(DICOMSeries, id=series_id)
+        
+        # Get all ROIs for this series
+        rois = get_rois_for_series(image_series.series_instance_uid)
+        
+        # Format ROI data
+        rois_data = []
+        for roi in rois:
+            nifti_path = get_roi_nifti_path(roi)
+            
+            # Determine ROI type
+            roi_type = 'STAPLE' if roi.staple_roi else 'RTStruct'
+            
+            # Get source information
+            if roi.instance:
+                source_series_uid = roi.instance.series.series_instance_uid[:30] + '...'
+            elif roi.staple_roi:
+                source_series_uid = 'STAPLE Consensus'
+            else:
+                source_series_uid = 'Unknown'
+            
+            rois_data.append({
+                'id': roi.id,
+                'name': roi.roi_name,
+                'type': roi_type,
+                'source': source_series_uid,
+                'has_nifti': nifti_path is not None
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'series_id': series_id,
+            'series_uid': image_series.series_instance_uid,
+            'modality': image_series.modality,
+            'rois': rois_data,
+            'total': len(rois_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching ROIs for series {series_id}: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'rois': []
+        }, status=500)

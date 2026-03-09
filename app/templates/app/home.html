@@ -44,6 +44,33 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-star-fill display-4 text-warning mb-3"></i>
+                        <h5 class="card-title">STAPLE Computation</h5>
+                        <p class="card-text">Compute consensus contours from multiple segmentations.</p>
+                        <a href="{% url 'staple_computation' %}" class="btn btn-outline-warning">Compute STAPLE</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-diagram-3 display-4 text-danger mb-3"></i>
+                        <h5 class="card-title">Spatial Overlap Metrics</h5>
+                        <p class="card-text">Compare ROI pairs and compute similarity metrics.</p>
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-outline-danger">
+                                <i class="bi bi-plus-circle me-1"></i>Compute Metrics
+                            </a>
+                            <a href="{% url 'spatial_overlap_metrics_list' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-table me-1"></i>View Results
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

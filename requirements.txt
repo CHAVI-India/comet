@@ -20,6 +20,7 @@ dotenv==0.9.9
 fonttools==4.61.1
 idna==3.11
 ImageIO==2.37.2
+joblib==1.5.3
 kiwisolver==1.4.9
 kombu==5.6.2
 lazy-loader==0.5
@@ -44,11 +45,13 @@ RapidFuzz==3.14.3
 requests==2.32.5
 rt-utils==1.2.7
 scikit-image==0.26.0
+scikit-learn==1.8.0
 scipy==1.17.1
 simpleitk==2.5.3
 six==1.17.0
 sqlparse==0.5.5
 termcolor==3.3.0
+threadpoolctl==3.6.0
 tifffile==2026.3.3
 typing_extensions==4.15.0
 tzdata==2025.3

@@ -1,0 +1,773 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Spatial Overlap Metrics - ROI Comparison{% endblock %}
+
+{% block extra_css %}
+<style>
+    .roi-card {
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 2px solid transparent;
+    }
+    .roi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .roi-card.selected-reference {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    .roi-card.selected-target {
+        border-color: #198754;
+        background-color: #d1e7dd;
+    }
+    .roi-card.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .selection-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 0.9rem;
+        padding: 0.4rem 0.6rem;
+    }
+    .metrics-result {
+        animation: fadeIn 0.5s;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .pair-item {
+        border-left: 4px solid #0d6efd;
+        background-color: #f8f9fa;
+        margin-bottom: 0.5rem;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+    }
+    .series-selector {
+        position: sticky;
+        top: 20px;
+        z-index: 100;
+    }
+    .roi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Home
+    </a>
+    <a href="{% url 'nifti_list' %}" class="btn btn-outline-primary btn-sm ms-2">
+        <i class="bi bi-file-earmark-medical me-1"></i>NIfTI Files
+    </a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">
+            <i class="bi bi-diagram-3 me-2"></i>Spatial Overlap Metrics Computation
+        </h4>
+        <small>Select ROI pairs to compute spatial similarity metrics (DSC, HD95, APL, MSD, OMDC, UMDC)</small>
+    </div>
+    <div class="card-body">
+        {% if roi_list %}
+        
+        {% csrf_token %}
+        
+        <!-- Instructions -->
+        <div class="alert alert-info mb-4">
+            <h6 class="alert-heading"><i class="bi bi-info-circle me-2"></i>How to Use</h6>
+            <ol class="mb-0">
+                <li><strong>Select First ROI Name</strong> - Choose an ROI structure name (e.g., "GTV", "CTV")</li>
+                <li><strong>Select Second ROI Name</strong> - Choose the same or different ROI name to compare</li>
+                <li><strong>Auto-Generate Pairs</strong> - System automatically creates all pairwise combinations</li>
+                <li><strong>Review Pairs</strong> - Check the generated comparison list below</li>
+                <li><strong>Compute Metrics</strong> - Click "Compute All Metrics" to calculate spatial overlap</li>
+            </ol>
+            <div class="alert alert-success mt-2 mb-0">
+                <small><i class="bi bi-check-circle me-1"></i><strong>Examples:</strong></small>
+                <ul class="small mb-0 mt-1">
+                    <li><strong>Same ROI, different structure sets:</strong> Select "GTV" → "GTV". If GTV exists in 4 structure sets, creates 6 pairs (1vs2, 1vs3, 1vs4, 2vs3, 2vs4, 3vs4)</li>
+                    <li><strong>STAPLE vs all instances:</strong> Select "GTV (STAPLE)" → "GTV". Creates STAPLE vs each instance (STAPLE vs 1, STAPLE vs 2, etc.)</li>
+                    <li><strong>Different ROIs:</strong> Select "GTV" → "CTV". Creates all combinations where both exist in same series</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ROI Selection Area -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="bi bi-bullseye me-2"></i>Select ROI Names for Comparison
+                    <span class="badge bg-secondary ms-2">{{ total_roi_names }} ROI names available</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- First ROI Selection -->
+                    <div class="col-md-5">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-1-circle me-2"></i>First ROI Name
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <select id="firstRoiSelect" class="form-select form-select-lg">
+                                    <option value="">-- Select ROI name --</option>
+                                    {% for roi in roi_list %}
+                                        {% if roi.regular_instances %}
+                                        <option value="{{ roi.roi_name }}" data-type="regular">
+                                            {{ roi.roi_name }} ({{ roi.regular_instances|length }} instance{{ roi.regular_instances|length|pluralize }})
+                                        </option>
+                                        {% endif %}
+                                        {% if roi.has_staple %}
+                                        <option value="{{ roi.roi_name }}" data-type="staple">
+                                            {{ roi.roi_name }} ⭐ STAPLE ({{ roi.staple_instances|length }} instance{{ roi.staple_instances|length|pluralize }})
+                                        </option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                                
+                                <div id="firstRoiInfo" class="mt-3 p-2 bg-light rounded" style="display: none;">
+                                    <small class="text-muted d-block"><strong>Instances:</strong></small>
+                                    <div id="firstRoiDetails" class="small" style="max-height: 150px; overflow-y: auto;">
+                                        <!-- Will be populated by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Arrow Column -->
+                    <div class="col-md-2 d-flex align-items-center justify-content-center">
+                        <div class="text-center">
+                            <i class="bi bi-arrow-right display-3 text-muted"></i>
+                            <p class="text-muted small mt-2">vs</p>
+                        </div>
+                    </div>
+
+                    <!-- Second ROI Selection -->
+                    <div class="col-md-5">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-2-circle me-2"></i>Second ROI Name
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <select id="secondRoiSelect" class="form-select form-select-lg" disabled>
+                                    <option value="">-- Select first ROI first --</option>
+                                </select>
+                                
+                                <div id="secondRoiInfo" class="mt-3 p-2 bg-light rounded" style="display: none;">
+                                    <small class="text-muted d-block"><strong>Instances:</strong></small>
+                                    <div id="secondRoiDetails" class="small" style="max-height: 150px; overflow-y: auto;">
+                                        <!-- Will be populated by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button id="clearSelection" class="btn btn-outline-secondary btn-lg">
+                        <i class="bi bi-x-circle me-1"></i>Clear Selection
+                    </button>
+                    <button id="addPairsBtn" class="btn btn-primary btn-lg ms-2" disabled>
+                        <i class="bi bi-plus-circle me-1"></i>Generate Comparison Pairs
+                    </button>
+                </div>
+            </div>
+        </div>
+
+            <!-- Comparison List -->
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-check me-2"></i>Comparison List
+                        <span id="pairCount" class="badge bg-primary ms-2">0</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="pairsList">
+                        <p class="text-muted text-center py-3">
+                            <i class="bi bi-inbox me-2"></i>No ROI pairs added yet
+                        </p>
+                    </div>
+                    
+                    <div class="d-grid gap-2 mt-3" id="computeButtonArea" style="display: none;">
+                        <button id="computeMetricsBtn" class="btn btn-success btn-lg">
+                            <i class="bi bi-calculator me-2"></i>Compute All Metrics
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Area -->
+            <div id="resultsArea" style="display: none;">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-check-circle me-2"></i>Computation Results
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="resultsContent">
+                            <!-- Results will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            No patients with NIfTI files found. Please convert DICOM series to NIfTI format first.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Store ROI data
+const roiData = {{ roi_data_json|safe }};
+let roiPairs = [];
+let selectedFirstROI = null;
+let selectedSecondROI = null;
+let selectedFirstType = null;
+let selectedSecondType = null;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    setupEventListeners();
+});
+
+function setupEventListeners() {
+    document.getElementById('firstRoiSelect').addEventListener('change', handleFirstROIChange);
+    document.getElementById('secondRoiSelect').addEventListener('change', handleSecondROIChange);
+    document.getElementById('clearSelection').addEventListener('click', clearROISelection);
+    document.getElementById('addPairsBtn').addEventListener('click', generatePairs);
+    document.getElementById('computeMetricsBtn').addEventListener('click', computeMetrics);
+}
+
+function handleFirstROIChange(e) {
+    const selectedOption = e.target.options[e.target.selectedIndex];
+    const roiName = e.target.value;
+    const roiType = selectedOption.dataset.type;
+    
+    if (roiName && roiType) {
+        selectFirstROI(roiName, roiType);
+    } else {
+        resetSecondDropdown();
+    }
+}
+
+function selectFirstROI(roiName, type) {
+    selectedFirstROI = roiData.find(r => r.roi_name === roiName);
+    selectedFirstType = type;
+    
+    if (!selectedFirstROI) return;
+    
+    // Display instances
+    const instances = type === 'staple' ? selectedFirstROI.staple_instances : selectedFirstROI.regular_instances;
+    const firstRoiDetails = document.getElementById('firstRoiDetails');
+    firstRoiDetails.innerHTML = instances.map(inst => `
+        <div class="p-1 mb-1 border-bottom">
+            <strong>${inst.patient_id}</strong> - ${inst.series_modality}
+            <span class="badge bg-${inst.roi_type === 'STAPLE' ? 'warning text-dark' : 'info'} ms-1">${inst.roi_type}</span>
+        </div>
+    `).join('');
+    document.getElementById('firstRoiInfo').style.display = 'block';
+    
+    // Enable and populate second dropdown
+    populateSecondDropdown();
+}
+
+function populateSecondDropdown() {
+    const secondRoiSelect = document.getElementById('secondRoiSelect');
+    
+    secondRoiSelect.innerHTML = '<option value="">-- Select ROI name --</option>';
+    
+    // Get series IDs where first ROI exists
+    const firstInstances = selectedFirstType === 'staple' ? selectedFirstROI.staple_instances : selectedFirstROI.regular_instances;
+    const firstSeriesIds = new Set(firstInstances.map(inst => inst.series_id));
+    
+    // Populate with ROIs that share at least one series
+    roiData.forEach(roi => {
+        // Check regular instances
+        if (roi.regular_instances.length > 0) {
+            const commonSeries = roi.regular_instances.filter(inst => firstSeriesIds.has(inst.series_id));
+            if (commonSeries.length > 0) {
+                const option = document.createElement('option');
+                option.value = roi.roi_name;
+                option.dataset.type = 'regular';
+                option.textContent = `${roi.roi_name} (${roi.regular_instances.length} instances)`;
+                secondRoiSelect.appendChild(option);
+            }
+        }
+        
+        // Check STAPLE instances
+        if (roi.has_staple) {
+            const commonSeries = roi.staple_instances.filter(inst => firstSeriesIds.has(inst.series_id));
+            if (commonSeries.length > 0) {
+                const option = document.createElement('option');
+                option.value = roi.roi_name;
+                option.dataset.type = 'staple';
+                option.textContent = `${roi.roi_name} ⭐ STAPLE (${roi.staple_instances.length} instances)`;
+                secondRoiSelect.appendChild(option);
+            }
+        }
+    });
+    
+    secondRoiSelect.disabled = false;
+}
+
+function handleSecondROIChange(e) {
+    const selectedOption = e.target.options[e.target.selectedIndex];
+    const roiName = e.target.value;
+    const roiType = selectedOption.dataset.type;
+    
+    if (roiName && roiType) {
+        selectSecondROI(roiName, roiType);
+    } else {
+        document.getElementById('secondRoiInfo').style.display = 'none';
+        document.getElementById('addPairsBtn').disabled = true;
+        selectedSecondROI = null;
+        selectedSecondType = null;
+    }
+}
+
+function selectSecondROI(roiName, type) {
+    selectedSecondROI = roiData.find(r => r.roi_name === roiName);
+    selectedSecondType = type;
+    
+    if (!selectedSecondROI) return;
+    
+    // Display instances
+    const instances = type === 'staple' ? selectedSecondROI.staple_instances : selectedSecondROI.regular_instances;
+    const secondRoiDetails = document.getElementById('secondRoiDetails');
+    secondRoiDetails.innerHTML = instances.map(inst => `
+        <div class="p-1 mb-1 border-bottom">
+            <strong>${inst.patient_id}</strong> - ${inst.series_modality}
+            <span class="badge bg-${inst.roi_type === 'STAPLE' ? 'warning text-dark' : 'info'} ms-1">${inst.roi_type}</span>
+        </div>
+    `).join('');
+    document.getElementById('secondRoiInfo').style.display = 'block';
+    
+    // Calculate how many pairs will be generated
+    const pairCount = calculatePairCount();
+    const addBtn = document.getElementById('addPairsBtn');
+    addBtn.disabled = false;
+    addBtn.innerHTML = `<i class="bi bi-plus-circle me-1"></i>Generate ${pairCount} Comparison Pair${pairCount > 1 ? 's' : ''}`;
+}
+
+function calculatePairCount() {
+    const firstInstances = selectedFirstType === 'staple' ? selectedFirstROI.staple_instances : selectedFirstROI.regular_instances;
+    const secondInstances = selectedSecondType === 'staple' ? selectedSecondROI.staple_instances : selectedSecondROI.regular_instances;
+    
+    // Find common series
+    const firstSeriesIds = new Set(firstInstances.map(inst => inst.series_id));
+    const commonSecondInstances = secondInstances.filter(inst => firstSeriesIds.has(inst.series_id));
+    
+    // If first is STAPLE, generate STAPLE vs each instance
+    if (selectedFirstType === 'staple') {
+        return commonSecondInstances.length;
+    }
+    
+    // If second is STAPLE, generate each instance vs STAPLE
+    if (selectedSecondType === 'staple') {
+        const commonFirstInstances = firstInstances.filter(inst => {
+            return secondInstances.some(si => si.series_id === inst.series_id);
+        });
+        return commonFirstInstances.length;
+    }
+    
+    // Both are regular: generate all pairwise combinations
+    let count = 0;
+    firstInstances.forEach(firstInst => {
+        const matchingSecond = secondInstances.filter(secondInst => 
+            secondInst.series_id === firstInst.series_id
+        );
+        matchingSecond.forEach(secondInst => {
+            if (firstInst.roi_id !== secondInst.roi_id) {
+                count++;
+            }
+        });
+    });
+    
+    // For same ROI name, calculate pairwise combinations
+    if (selectedFirstROI.roi_name === selectedSecondROI.roi_name) {
+        const n = firstInstances.length;
+        count = (n * (n - 1)) / 2; // n choose 2
+    }
+    
+    return count;
+}
+
+function resetSecondDropdown() {
+    document.getElementById('secondRoiSelect').value = '';
+    document.getElementById('secondRoiSelect').disabled = true;
+    document.getElementById('secondRoiSelect').innerHTML = '<option value="">-- Select first ROI first --</option>';
+    document.getElementById('firstRoiInfo').style.display = 'none';
+    document.getElementById('secondRoiInfo').style.display = 'none';
+    document.getElementById('addPairsBtn').disabled = true;
+    selectedFirstROI = null;
+    selectedSecondROI = null;
+    selectedFirstType = null;
+    selectedSecondType = null;
+}
+
+function clearROISelection() {
+    document.getElementById('firstRoiSelect').value = '';
+    resetSecondDropdown();
+    document.getElementById('addPairsBtn').innerHTML = '<i class="bi bi-plus-circle me-1"></i>Generate Comparison Pairs';
+}
+
+function generatePairs() {
+    if (!selectedFirstROI || !selectedSecondROI) return;
+    
+    const firstInstances = selectedFirstType === 'staple' ? selectedFirstROI.staple_instances : selectedFirstROI.regular_instances;
+    const secondInstances = selectedSecondType === 'staple' ? selectedSecondROI.staple_instances : selectedSecondROI.regular_instances;
+    
+    // Find common series
+    const firstSeriesIds = new Set(firstInstances.map(inst => inst.series_id));
+    
+    // Generate pairs based on type
+    if (selectedFirstType === 'staple') {
+        // STAPLE vs all instances
+        secondInstances.forEach(secondInst => {
+            if (firstSeriesIds.has(secondInst.series_id)) {
+                const firstInst = firstInstances.find(fi => fi.series_id === secondInst.series_id);
+                if (firstInst) {
+                    addPair(firstInst, secondInst);
+                }
+            }
+        });
+    } else if (selectedSecondType === 'staple') {
+        // All instances vs STAPLE
+        firstInstances.forEach(firstInst => {
+            const secondInst = secondInstances.find(si => si.series_id === firstInst.series_id);
+            if (secondInst) {
+                addPair(firstInst, secondInst);
+            }
+        });
+    } else {
+        // Pairwise combinations
+        if (selectedFirstROI.roi_name === selectedSecondROI.roi_name) {
+            // Same ROI: generate all pairwise combinations (1vs2, 1vs3, 2vs3, etc.)
+            for (let i = 0; i < firstInstances.length; i++) {
+                for (let j = i + 1; j < firstInstances.length; j++) {
+                    if (firstInstances[i].series_id === firstInstances[j].series_id) {
+                        addPair(firstInstances[i], firstInstances[j]);
+                    }
+                }
+            }
+        } else {
+            // Different ROIs: all combinations where series match
+            firstInstances.forEach(firstInst => {
+                secondInstances.forEach(secondInst => {
+                    if (firstInst.series_id === secondInst.series_id) {
+                        addPair(firstInst, secondInst);
+                    }
+                });
+            });
+        }
+    }
+    
+    displayPairsList();
+    clearROISelection();
+}
+
+function addPair(firstInst, secondInst) {
+    // Check if pair already exists
+    const exists = roiPairs.some(p => 
+        p.reference_roi_id == firstInst.roi_id && 
+        p.target_roi_id == secondInst.roi_id
+    );
+    
+    if (!exists) {
+        roiPairs.push({
+            reference_roi_id: firstInst.roi_id,
+            reference_roi_name: firstInst.roi_name,
+            reference_roi_type: firstInst.roi_type,
+            target_roi_id: secondInst.roi_id,
+            target_roi_name: secondInst.roi_name,
+            target_roi_type: secondInst.roi_type,
+            series_id: firstInst.series_id,
+            series_modality: firstInst.series_modality,
+            patient_id: firstInst.patient_id,
+            patient_name: firstInst.patient_name,
+            reference_source: firstInst.source_label,
+            target_source: secondInst.source_label
+        });
+    }
+}
+
+function displayPairsList() {
+    const pairsList = document.getElementById('pairsList');
+    const pairCount = document.getElementById('pairCount');
+    const computeArea = document.getElementById('computeButtonArea');
+    
+    pairCount.textContent = roiPairs.length;
+    
+    if (roiPairs.length === 0) {
+        pairsList.innerHTML = '<p class="text-muted text-center py-3"><i class="bi bi-inbox me-2"></i>No ROI pairs added yet</p>';
+        computeArea.style.display = 'none';
+        return;
+    }
+    
+    pairsList.innerHTML = roiPairs.map((pair, index) => {
+        const refBadgeClass = pair.reference_roi_type === 'STAPLE' ? 'bg-warning text-dark' : 'bg-info';
+        const refIcon = pair.reference_roi_type === 'STAPLE' ? 'star-fill' : 'diagram-3';
+        const targetBadgeClass = pair.target_roi_type === 'STAPLE' ? 'bg-warning text-dark' : 'bg-info';
+        const targetIcon = pair.target_roi_type === 'STAPLE' ? 'star-fill' : 'diagram-3';
+        
+        return `
+        <div class="pair-item">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <div class="mb-2">
+                        <span class="badge bg-secondary me-2">${pair.patient_id}</span>
+                        <span class="badge bg-dark">${pair.series_modality}</span>
+                    </div>
+                    <div class="mb-2">
+                        <div class="d-flex align-items-center mb-1">
+                            <span class="badge ${refBadgeClass} me-2">
+                                <i class="bi bi-${refIcon} me-1"></i>${pair.reference_roi_type}
+                            </span>
+                            <strong class="text-primary">${pair.reference_roi_name}</strong>
+                        </div>
+                        <small class="text-muted ms-4">Source: ${pair.reference_source}</small>
+                    </div>
+                    <div class="text-center my-2">
+                        <i class="bi bi-arrow-down text-muted"></i>
+                        <small class="text-muted ms-2">compared with</small>
+                        <i class="bi bi-arrow-down text-muted ms-2"></i>
+                    </div>
+                    <div>
+                        <div class="d-flex align-items-center mb-1">
+                            <span class="badge ${targetBadgeClass} me-2">
+                                <i class="bi bi-${targetIcon} me-1"></i>${pair.target_roi_type}
+                            </span>
+                            <strong class="text-success">${pair.target_roi_name}</strong>
+                        </div>
+                        <small class="text-muted ms-4">Source: ${pair.target_source}</small>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="removePair(${index})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+        `;
+    }).join('');
+    
+    computeArea.style.display = 'block';
+}
+
+function removePair(index) {
+    roiPairs.splice(index, 1);
+    displayPairsList();
+}
+
+function computeMetrics() {
+    if (roiPairs.length === 0) return;
+    
+    console.log('Starting computation for', roiPairs.length, 'pairs');
+    console.log('ROI pairs:', roiPairs);
+    
+    const computeBtn = document.getElementById('computeMetricsBtn');
+    computeBtn.disabled = true;
+    computeBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting computation...';
+    
+    // Get CSRF token from cookie
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+    console.log('CSRF token:', csrftoken);
+    
+    // Start the Celery task
+    console.log('Sending request to /metrics/compute-overlap/');
+    fetch('/metrics/compute-overlap/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrftoken
+        },
+        body: `roi_pairs=${encodeURIComponent(JSON.stringify(roiPairs))}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.task_id) {
+            // Start polling for task status
+            pollTaskStatus(data.task_id, computeBtn);
+        } else {
+            computeBtn.disabled = false;
+            computeBtn.innerHTML = '<i class="bi bi-calculator me-2"></i>Compute All Metrics';
+            showError('Failed to start computation: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        computeBtn.disabled = false;
+        computeBtn.innerHTML = '<i class="bi bi-calculator me-2"></i>Compute All Metrics';
+        showError('Error: ' + error.message);
+    });
+}
+
+function pollTaskStatus(taskId, computeBtn) {
+    const pollInterval = setInterval(() => {
+        fetch(`/celery-progress/${taskId}/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.state === 'PROGRESS') {
+                    // Update progress
+                    const progress = data.progress || {};
+                    const percent = progress.percent || 0;
+                    const description = progress.description || 'Computing...';
+                    computeBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${description} (${percent}%)`;
+                } else if (data.state === 'SUCCESS') {
+                    // Task completed - redirect to results page
+                    clearInterval(pollInterval);
+                    console.log('Computation complete, redirecting to results page');
+                    window.location.href = `/metrics/overlap-results/${taskId}/`;
+                } else if (data.state === 'FAILURE') {
+                    // Task failed
+                    clearInterval(pollInterval);
+                    computeBtn.disabled = false;
+                    computeBtn.innerHTML = '<i class="bi bi-calculator me-2"></i>Compute All Metrics';
+                    showError('Computation failed: ' + (data.result || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                clearInterval(pollInterval);
+                computeBtn.disabled = false;
+                computeBtn.innerHTML = '<i class="bi bi-calculator me-2"></i>Compute All Metrics';
+                showError('Error checking task status: ' + error.message);
+            });
+    }, 1000); // Poll every second
+}
+
+function displayResults(results) {
+    const resultsArea = document.getElementById('resultsArea');
+    const resultsContent = document.getElementById('resultsContent');
+    
+    resultsContent.innerHTML = results.map((result, index) => {
+        const metrics = result.metrics;
+        const hasError = metrics.error;
+        
+        return `
+            <div class="metrics-result card mb-3">
+                <div class="card-header ${hasError ? 'bg-danger text-white' : 'bg-light'}">
+                    <h6 class="mb-0">
+                        Pair ${index + 1}: 
+                        <strong class="text-primary">${roiPairs[index].reference_roi_name}</strong>
+                        <i class="bi bi-arrow-right mx-2"></i>
+                        <strong class="text-success">${roiPairs[index].target_roi_name}</strong>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    ${hasError ? `
+                        <div class="alert alert-danger mb-0">
+                            <i class="bi bi-exclamation-triangle me-2"></i>${metrics.error}
+                        </div>
+                    ` : `
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-1">DSC</h6>
+                                        <h4 class="mb-0">${metrics.DSC !== null ? metrics.DSC.toFixed(4) : 'N/A'}</h4>
+                                        <small class="text-muted">Dice Similarity</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-1">HD95</h6>
+                                        <h4 class="mb-0">${metrics.HD95 !== null && isFinite(metrics.HD95) ? metrics.HD95.toFixed(2) : 'N/A'}</h4>
+                                        <small class="text-muted">Hausdorff 95% (mm)</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-1">MSD</h6>
+                                        <h4 class="mb-0">${metrics.MSD !== null && isFinite(metrics.MSD) ? metrics.MSD.toFixed(2) : 'N/A'}</h4>
+                                        <small class="text-muted">Mean Surface Distance (mm)</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-1">APL</h6>
+                                        <h4 class="mb-0">${metrics.APL !== null ? metrics.APL.toFixed(2) : 'N/A'}</h4>
+                                        <small class="text-muted">Added Path Length (mm)</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-1">UMDC</h6>
+                                        <h4 class="mb-0">${metrics.UMDC !== null ? metrics.UMDC.toFixed(2) : 'N/A'}</h4>
+                                        <small class="text-muted">Undercontouring MDC (mm)</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-1">OMDC</h6>
+                                        <h4 class="mb-0">${metrics.OMDC !== null ? metrics.OMDC.toFixed(2) : 'N/A'}</h4>
+                                        <small class="text-muted">Overcontouring MDC (mm)</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    resultsArea.style.display = 'block';
+    resultsArea.scrollIntoView({ behavior: 'smooth' });
+}
+
+function showError(message) {
+    alert('Error: ' + message);
+}
+
+function showWarning(message) {
+    alert('Warning: ' + message);
+}
+</script>
+{% endblock %}

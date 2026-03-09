@@ -1,0 +1,184 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Spatial Overlap Results{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-graph-up me-2"></i>Spatial Overlap Computation Results</h2>
+        <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Back to ROI Selection
+        </a>
+    </div>
+
+    {% if not task_ready %}
+    <!-- Task Still Running -->
+    <div class="card shadow">
+        <div class="card-body text-center py-5">
+            <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h4>Computation in Progress</h4>
+            <p class="text-muted">Task ID: {{ task_id }}</p>
+            <p class="text-muted">State: {{ task_state }}</p>
+            <button class="btn btn-primary mt-3" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise me-2"></i>Refresh Status
+            </button>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh every 2 seconds while task is running
+        setTimeout(() => location.reload(), 2000);
+    </script>
+    
+    {% elif success %}
+    <!-- Results Display -->
+    <div class="alert alert-success mb-4">
+        <h5 class="alert-heading"><i class="bi bi-check-circle me-2"></i>Computation Complete</h5>
+        <p class="mb-0">
+            Successfully computed metrics for <strong>{{ completed }}</strong> out of <strong>{{ total_pairs }}</strong> ROI pair(s).
+            {% if failed > 0 %}
+            <span class="text-warning ms-2">{{ failed }} pair(s) failed.</span>
+            {% endif %}
+        </p>
+    </div>
+
+    {% if errors %}
+    <div class="alert alert-warning mb-4">
+        <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Errors Encountered</h6>
+        <ul class="mb-0">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Results Cards -->
+    <div class="row">
+        {% for result in results %}
+        <div class="col-12 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header {% if result.metrics.error %}bg-danger text-white{% else %}bg-light{% endif %}">
+                    <h5 class="mb-0">
+                        Pair {{ forloop.counter }}: 
+                        <strong class="text-primary">{{ result.reference_roi_name }}</strong>
+                        <i class="bi bi-arrow-right mx-2"></i>
+                        <strong class="text-success">{{ result.target_roi_name }}</strong>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if result.metrics.error %}
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>{{ result.metrics.error }}
+                    </div>
+                    {% else %}
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted mb-1">DSC</h6>
+                                    <h3 class="mb-0 text-primary">
+                                        {% if result.metrics.DSC != None %}
+                                            {{ result.metrics.DSC|floatformat:4 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Dice Similarity Coefficient</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted mb-1">HD95</h6>
+                                    <h3 class="mb-0 text-info">
+                                        {% if result.metrics.HD95 != None %}
+                                            {{ result.metrics.HD95|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Hausdorff 95% (mm)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted mb-1">MSD</h6>
+                                    <h3 class="mb-0 text-warning">
+                                        {% if result.metrics.MSD != None %}
+                                            {{ result.metrics.MSD|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Mean Surface Distance (mm)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted mb-1">APL</h6>
+                                    <h3 class="mb-0 text-success">
+                                        {% if result.metrics.APL != None %}
+                                            {{ result.metrics.APL|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Added Path Length (mm)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted mb-1">UMDC</h6>
+                                    <h3 class="mb-0 text-danger">
+                                        {% if result.metrics.UMDC != None %}
+                                            {{ result.metrics.UMDC|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Undercontouring MDC (mm)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted mb-1">OMDC</h6>
+                                    <h3 class="mb-0 text-secondary">
+                                        {% if result.metrics.OMDC != None %}
+                                            {{ result.metrics.OMDC|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h3>
+                                    <small class="text-muted">Overcontouring MDC (mm)</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <!-- Task Failed -->
+    <div class="alert alert-danger">
+        <h5 class="alert-heading"><i class="bi bi-x-circle me-2"></i>Computation Failed</h5>
+        <p class="mb-0">{{ error }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

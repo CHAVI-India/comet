@@ -8,6 +8,7 @@ from celery_progress.backend import ProgressRecorder
 
 from app.models import DICOMSeries
 from app.utils.dcm_to_nifti_converter import convert_series_with_rtstructs
+from app.utils.spatial_overlap_metrics import compute_spatial_overlap_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,106 @@ def compute_staple_task(self, image_series_id, structure_name, rtstruct_series_i
 
 
 @shared_task(bind=True)
+def compute_spatial_overlap_task(self, roi_pairs):
+    """
+    Celery task to compute spatial overlap metrics for multiple ROI pairs.
+    
+    Args:
+        roi_pairs: List of dicts with keys:
+            - reference_roi_id: ID of reference ROI
+            - target_roi_id: ID of target ROI
+            - reference_roi_name: Name of reference ROI (for display)
+            - target_roi_name: Name of target ROI (for display)
+        
+    Returns:
+        Dictionary with computation results for all pairs
+    """
+    progress_recorder = ProgressRecorder(self)
+    total_pairs = len(roi_pairs)
+    
+    results = {
+        'success': True,
+        'total_pairs': total_pairs,
+        'completed': 0,
+        'failed': 0,
+        'pair_results': [],
+        'errors': []
+    }
+    
+    logger.info(f"Starting spatial overlap computation for {total_pairs} ROI pairs")
+    
+    for idx, pair in enumerate(roi_pairs, 1):
+        try:
+            reference_roi_id = int(pair['reference_roi_id'])
+            target_roi_id = int(pair['target_roi_id'])
+            reference_roi_name = pair.get('reference_roi_name', 'Unknown')
+            target_roi_name = pair.get('target_roi_name', 'Unknown')
+            
+            # Update progress
+            progress_pct = int((idx - 1) / total_pairs * 100)
+            progress_recorder.set_progress(
+                progress_pct,
+                100,
+                description=f"Computing pair {idx}/{total_pairs}: {reference_roi_name} vs {target_roi_name}"
+            )
+            
+            logger.info(f"Computing pair {idx}/{total_pairs}: ROI {reference_roi_id} vs {target_roi_id}")
+            
+            # Compute metrics
+            metrics = compute_spatial_overlap_metrics(
+                reference_roi_id=reference_roi_id,
+                target_roi_id=target_roi_id,
+                save_to_db=True
+            )
+            
+            results['pair_results'].append({
+                'reference_roi_id': reference_roi_id,
+                'reference_roi_name': reference_roi_name,
+                'target_roi_id': target_roi_id,
+                'target_roi_name': target_roi_name,
+                'metrics': metrics,
+                'success': metrics.get('error') is None
+            })
+            
+            if metrics.get('error'):
+                results['failed'] += 1
+                results['errors'].append(f"Pair {idx}: {metrics['error']}")
+            else:
+                results['completed'] += 1
+            
+            logger.info(f"Completed pair {idx}/{total_pairs}")
+            
+        except Exception as e:
+            error_msg = f"Error computing pair {idx}/{total_pairs}: {str(e)}"
+            logger.error(error_msg)
+            results['failed'] += 1
+            results['errors'].append(error_msg)
+            results['pair_results'].append({
+                'reference_roi_id': pair.get('reference_roi_id'),
+                'reference_roi_name': pair.get('reference_roi_name', 'Unknown'),
+                'target_roi_id': pair.get('target_roi_id'),
+                'target_roi_name': pair.get('target_roi_name', 'Unknown'),
+                'metrics': {
+                    'error': str(e),
+                    'DSC': None,
+                    'HD95': None,
+                    'APL': None,
+                    'MSD': None,
+                    'OMDC': None,
+                    'UMDC': None
+                },
+                'success': False
+            })
+    
+    # Final progress update
+    progress_recorder.set_progress(100, 100, description=f"Computation complete! {results['completed']}/{total_pairs} successful")
+    
+    logger.info(f"Spatial overlap computation complete: {results['completed']} successful, {results['failed']} failed")
+    
+    return results
+
+
+@shared_task(bind=True)
 def compute_batch_staple_task(self, staple_requests):
     """
     Celery task to compute STAPLE contours for multiple ROIs across multiple patients.
@@ -239,4 +340,63 @@ def compute_batch_staple_task(self, staple_requests):
     return results
 
 
-__all__ = ['convert_series_to_nifti', 'compute_staple_task', 'compute_batch_staple_task']
+@shared_task(bind=True)
+def generate_visualization_task(self, image_series_id, roi_names, include_staple=True, 
+                                window_center=None, window_width=None):
+    """
+    Celery task to generate visualizations for ROIs.
+    Generates all slices for interactive viewing.
+    
+    Args:
+        image_series_id: ID of the image series
+        roi_names: List of ROI names to visualize
+        include_staple: Whether to include STAPLE contours
+        window_center: Window center for CT windowing
+        window_width: Window width for CT windowing
+        
+    Returns:
+        Dictionary with visualization results
+    """
+    from app.utils.nifti_visualizer import visualize_patient_rois
+    
+    progress_recorder = ProgressRecorder(self)
+    
+    progress_recorder.set_progress(10, 100, description="Starting visualization generation...")
+    
+    try:
+        # Generate visualizations (all slices)
+        visualizations = visualize_patient_rois(
+            image_series_id=image_series_id,
+            roi_names=roi_names,
+            include_staple=include_staple,
+            num_slices=None,  # Generate all slices
+            window_center=window_center,
+            window_width=window_width
+        )
+        
+        progress_recorder.set_progress(100, 100, description="Visualization complete!")
+        
+        result = {
+            'success': True,
+            'visualizations': visualizations,
+            'roi_count': len(visualizations),
+            'errors': []
+        }
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Error generating visualizations: {str(e)}"
+        logger.error(error_msg)
+        
+        result = {
+            'success': False,
+            'visualizations': {},
+            'roi_count': 0,
+            'errors': [error_msg]
+        }
+        
+        return result
+
+
+__all__ = ['convert_series_to_nifti', 'compute_staple_task', 'compute_batch_staple_task', 'generate_visualization_task']

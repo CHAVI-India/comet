@@ -1,0 +1,455 @@
+{% extends "app/base.html" %}
+{% load static %}
+
+{% block title %}STAPLE Computation{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-star-fill me-2 text-warning"></i>STAPLE Computation</h2>
+            <p class="text-muted">
+                Select ROIs to compute STAPLE consensus contours. STAPLE can only be computed for ROIs that appear in multiple structure sets for the same patient.
+            </p>
+        </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total ROIs</h5>
+                    <h2>{{ total_rois }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">STAPLE Eligible</h5>
+                    <h2 id="stapleEligibleCount">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Selected ROIs</h5>
+                    <h2 id="selectedCount">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h5 class="card-title">Global Threshold</h5>
+                    <input type="number" class="form-control form-control-lg" id="global_threshold" 
+                           value="0.95" min="0" max="1" step="0.05" style="font-size: 1.5rem; font-weight: bold;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <button class="btn btn-outline-primary" id="selectAllBtn">
+                <i class="bi bi-check-square me-1"></i>Select All Eligible
+            </button>
+            <button class="btn btn-outline-secondary ms-2" id="deselectAllBtn">
+                <i class="bi bi-square me-1"></i>Deselect All
+            </button>
+            <button class="btn btn-success ms-3" id="computeStapleBtn" disabled>
+                <i class="bi bi-star-fill me-1"></i>Compute STAPLE for Selected ROIs
+            </button>
+        </div>
+        <div class="col-md-6 text-end">
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="roiFilter" id="filterEligible" value="eligible" checked>
+                <label class="btn btn-outline-success" for="filterEligible">
+                    <i class="bi bi-filter me-1"></i>Show Eligible Only
+                </label>
+                
+                <input type="radio" class="btn-check" name="roiFilter" id="filterAll" value="all">
+                <label class="btn btn-outline-secondary" for="filterAll">
+                    <i class="bi bi-list me-1"></i>Show All ROIs
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div id="progressWrapper" class="mb-3 d-none">
+        <div class="progress" style="height: 30px;">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                 role="progressbar" style="width: 0%">0%</div>
+        </div>
+        <div id="progressInfo" class="text-center text-muted mt-2">Processing...</div>
+    </div>
+
+    <!-- Result Message -->
+    <div id="resultMessage"></div>
+
+    <!-- ROI Table -->
+    <div class="card">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="bi bi-table me-2"></i>ROIs with NIfTI Files</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width: 5%">
+                                <input type="checkbox" id="selectAllCheckbox" class="form-check-input">
+                            </th>
+                            <th style="width: 30%">ROI Name</th>
+                            <th style="width: 10%" class="text-center">Patients</th>
+                            <th style="width: 10%" class="text-center">Structure Sets</th>
+                            <th style="width: 15%" class="text-center">STAPLE Eligible</th>
+                            <th style="width: 15%" class="text-center">Status</th>
+                            <th style="width: 15%" class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for roi in roi_list %}
+                        <tr class="roi-row {% if not roi.can_compute_staple %}table-secondary{% endif %}" 
+                            data-roi-name="{{ roi.name }}"
+                            data-can-staple="{{ roi.can_compute_staple|yesno:'true,false' }}"
+                            data-eligible-patients="{{ roi.staple_eligible_patients|join:',' }}">
+                            <td>
+                                {% if roi.can_compute_staple %}
+                                <input type="checkbox" class="form-check-input roi-checkbox" 
+                                       value="{{ roi.name }}"
+                                       data-roi-name="{{ roi.name }}">
+                                {% else %}
+                                <input type="checkbox" class="form-check-input" disabled>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ roi.name }}</strong>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary">{{ roi.patient_count }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-info">{{ roi.structure_set_count }}</span>
+                            </td>
+                            <td class="text-center">
+                                {% if roi.can_compute_staple %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle me-1"></i>{{ roi.staple_eligible_count }} patient{{ roi.staple_eligible_count|pluralize }}
+                                </span>
+                                {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-x-circle me-1"></i>Not eligible
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="staple-status-{{ roi.name|slugify }}" data-roi="{{ roi.name }}">
+                                    <span class="badge bg-{{ roi.staple_status_class }}">
+                                        {% if roi.staple_status == 'computed' %}
+                                        <i class="bi bi-check-circle me-1"></i>
+                                        {% elif roi.staple_status == 'eligible' %}
+                                        <i class="bi bi-clock me-1"></i>
+                                        {% else %}
+                                        <i class="bi bi-x-circle me-1"></i>
+                                        {% endif %}
+                                        {{ roi.staple_status_label }}
+                                    </span>
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-info view-details-btn" 
+                                        type="button"
+                                        data-bs-toggle="collapse" 
+                                        data-bs-target="#details-{{ forloop.counter }}">
+                                    <i class="bi bi-info-circle me-1"></i>View Details
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="collapse" id="details-{{ forloop.counter }}">
+                            <td colspan="7" class="bg-light">
+                                <div class="p-3">
+                                    <h6 class="mb-2"><i class="bi bi-diagram-3 me-2"></i>Structure Sets containing "{{ roi.name }}"</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Patient ID</th>
+                                                    <th>Patient Name</th>
+                                                    <th>Image Modality</th>
+                                                    <th>Structure Set UID</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for ss in roi.structure_sets %}
+                                                <tr>
+                                                    <td><code>{{ ss.patient_id }}</code></td>
+                                                    <td>{{ ss.patient_name }}</td>
+                                                    <td><span class="badge bg-secondary">{{ ss.image_modality }}</span></td>
+                                                    <td><small><code>{{ ss.series_uid|truncatechars:60 }}</code></small></td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {% if roi.staple_computed_count > 0 %}
+                                    <div class="alert alert-success mt-3 mb-2">
+                                        <i class="bi bi-check-circle me-2"></i>
+                                        <strong>STAPLE has been computed for this ROI in {{ roi.staple_computed_count }} patient{{ roi.staple_computed_count|pluralize }}:</strong>
+                                        {% for patient_id in roi.staple_computed_patients %}
+                                        <span class="badge bg-success ms-1">{{ patient_id }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    
+                                    {% if roi.can_compute_staple %}
+                                    <div class="alert alert-info mt-2 mb-0">
+                                        <i class="bi bi-info-circle me-2"></i>
+                                        <strong>STAPLE can be computed for this ROI in {{ roi.staple_eligible_count }} patient{{ roi.staple_eligible_count|pluralize }}:</strong>
+                                        {% for patient_id in roi.staple_eligible_patients %}
+                                        {% if patient_id in roi.staple_computed_patients %}
+                                        <span class="badge bg-success ms-1" title="STAPLE already computed">{{ patient_id }} ✓</span>
+                                        {% else %}
+                                        <span class="badge bg-primary ms-1" title="STAPLE not yet computed">{{ patient_id }}</span>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox me-2"></i>No ROIs with NIfTI files found
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const computeStapleBtn = document.getElementById('computeStapleBtn');
+    const selectedCountEl = document.getElementById('selectedCount');
+    const stapleEligibleCountEl = document.getElementById('stapleEligibleCount');
+    const progressWrapper = document.getElementById('progressWrapper');
+    const progressBar = document.getElementById('progressBar');
+    const progressInfo = document.getElementById('progressInfo');
+    const resultMessage = document.getElementById('resultMessage');
+    const filterEligible = document.getElementById('filterEligible');
+    const filterAll = document.getElementById('filterAll');
+
+    // Count STAPLE eligible ROIs
+    const eligibleCount = document.querySelectorAll('.roi-row[data-can-staple="true"]').length;
+    stapleEligibleCountEl.textContent = eligibleCount;
+
+    // Filter ROIs based on eligibility
+    function filterROIs(showAll) {
+        const allRows = document.querySelectorAll('.roi-row');
+        let visibleCount = 0;
+        
+        allRows.forEach((row, index) => {
+            const canStaple = row.dataset.canStaple === 'true';
+            const detailsRow = row.nextElementSibling; // The collapse row
+            
+            if (showAll || canStaple) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+                // Also hide the details row if it's expanded
+                if (detailsRow && detailsRow.classList.contains('collapse')) {
+                    detailsRow.classList.remove('show');
+                }
+            }
+        });
+        
+        // Update total ROIs display if needed
+        return visibleCount;
+    }
+
+    // Filter event listeners
+    filterEligible.addEventListener('change', function() {
+        if (this.checked) {
+            filterROIs(false);
+        }
+    });
+
+    filterAll.addEventListener('change', function() {
+        if (this.checked) {
+            filterROIs(true);
+        }
+    });
+
+    // Apply default filter (show only eligible)
+    filterROIs(false);
+
+    // Update selected count
+    function updateSelectedCount() {
+        const selectedCheckboxes = document.querySelectorAll('.roi-checkbox:checked');
+        selectedCountEl.textContent = selectedCheckboxes.length;
+        computeStapleBtn.disabled = selectedCheckboxes.length === 0;
+    }
+
+    // Select all eligible ROIs
+    selectAllBtn.addEventListener('click', function() {
+        document.querySelectorAll('.roi-checkbox').forEach(cb => cb.checked = true);
+        updateSelectedCount();
+    });
+
+    // Deselect all
+    deselectAllBtn.addEventListener('click', function() {
+        document.querySelectorAll('.roi-checkbox').forEach(cb => cb.checked = false);
+        updateSelectedCount();
+    });
+
+    // Individual checkbox change
+    document.querySelectorAll('.roi-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+
+    // Compute STAPLE
+    computeStapleBtn.addEventListener('click', function() {
+        const selectedCheckboxes = document.querySelectorAll('.roi-checkbox:checked');
+        const threshold = parseFloat(document.getElementById('global_threshold').value);
+        
+        if (selectedCheckboxes.length === 0) {
+            alert('Please select at least one ROI for STAPLE computation');
+            return;
+        }
+
+        // Build batch data - group by patient and ROI
+        const batchData = [];
+        selectedCheckboxes.forEach(cb => {
+            const roiName = cb.dataset.roiName;
+            const row = cb.closest('.roi-row');
+            const eligiblePatients = row.dataset.eligiblePatients.split(',').filter(p => p);
+            
+            // For each eligible patient, we need to find their image series and structure sets
+            // This will be handled by the backend
+            batchData.push({
+                roi_name: roiName,
+                threshold: threshold
+            });
+        });
+
+        // Disable button
+        computeStapleBtn.disabled = true;
+        computeStapleBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Computing...';
+        
+        // Show progress bar
+        progressWrapper.classList.remove('d-none');
+        resultMessage.innerHTML = '';
+        
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
+        // Submit batch STAPLE request
+        fetch('{% url "compute_batch_staple" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': csrfToken
+            },
+            body: new URLSearchParams({
+                'batch_data': JSON.stringify(batchData),
+                'csrfmiddlewaretoken': csrfToken
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                pollBatchProgress(data.task_id, data.total_requests);
+            } else {
+                handleBatchError(data.error || 'Batch STAPLE computation failed');
+            }
+        })
+        .catch(error => {
+            handleBatchError('Error: ' + error.message);
+        });
+    });
+
+    function pollBatchProgress(taskId, totalRequests) {
+        const pollInterval = setInterval(() => {
+            fetch(`/api/batch-staple-status/${taskId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    const current = data.current || 0;
+                    const total = data.total || totalRequests;
+                    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+                    
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = percent + '%';
+                    progressInfo.textContent = `Processing ${current} of ${total} STAPLE computations...`;
+                    
+                    if (data.state === 'SUCCESS' || data.state === 'FAILURE' || data.complete) {
+                        clearInterval(pollInterval);
+                        handleBatchComplete(data);
+                    }
+                })
+                .catch(error => {
+                    clearInterval(pollInterval);
+                    handleBatchError('Error polling status: ' + error.message);
+                });
+        }, 2000);
+    }
+
+    function handleBatchComplete(data) {
+        progressBar.style.width = '100%';
+        progressBar.textContent = '100%';
+        progressInfo.textContent = 'Complete!';
+        
+        computeStapleBtn.disabled = false;
+        computeStapleBtn.innerHTML = '<i class="bi bi-star-fill me-1"></i>Compute STAPLE for Selected ROIs';
+        
+        if (data.state === 'SUCCESS') {
+            const result = data.result || {};
+            const successful = result.successful || 0;
+            const failed = result.failed || 0;
+            
+            resultMessage.innerHTML = `
+                <div class="alert alert-success alert-dismissible fade show">
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <h5><i class="bi bi-check-circle me-2"></i>STAPLE Computation Complete!</h5>
+                    <p class="mb-0">Successfully computed: ${successful} | Failed: ${failed}</p>
+                </div>
+            `;
+            
+            // Refresh page to show updated status
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            handleBatchError(data.error || 'Batch computation failed');
+        }
+    }
+
+    function handleBatchError(errorMsg) {
+        progressWrapper.classList.add('d-none');
+        computeStapleBtn.disabled = false;
+        computeStapleBtn.innerHTML = '<i class="bi bi-star-fill me-1"></i>Compute STAPLE for Selected ROIs';
+        
+        resultMessage.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show">
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <h5><i class="bi bi-exclamation-triangle me-2"></i>Error</h5>
+                <p class="mb-0">${errorMsg}</p>
+            </div>
+        `;
+    }
+});
+</script>
+
+{% csrf_token %}
+{% endblock %}

@@ -1,0 +1,364 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Visualize ROIs - {{ patient.patient_id }}{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="mb-4">
+    <a href="{% url 'nifti_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to NIfTI List
+    </a>
+    <a href="{% url 'view_visualizations' series.id %}" class="btn btn-outline-primary btn-sm ms-2">
+        <i class="bi bi-images me-1"></i>View Generated Visualizations
+    </a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">
+            <i class="bi bi-eye me-2"></i>ROI Visualization
+        </h4>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h5><i class="bi bi-person me-2 text-primary"></i>Patient Information</h5>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="150">Patient ID:</th>
+                        <td><strong>{{ patient.patient_id }}</strong></td>
+                    </tr>
+                    {% if patient.patient_name %}
+                    <tr>
+                        <th>Patient Name:</th>
+                        <td>{{ patient.patient_name }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h5><i class="bi bi-file-medical me-2 text-info"></i>Series Information</h5>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="150">Modality:</th>
+                        <td><span class="badge bg-info">{{ series.modality }}</span></td>
+                    </tr>
+                    <tr>
+                        <th>Series UID:</th>
+                        <td><code>{{ series.series_instance_uid|truncatechars:40 }}</code></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <hr>
+
+        <h5 class="mb-3"><i class="bi bi-sliders me-2"></i>Visualization Settings</h5>
+        
+        <form id="visualizationForm">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <label for="num_slices" class="form-label">Number of Slices</label>
+                    <input type="number" class="form-control" id="num_slices" name="num_slices" 
+                           value="9" min="3" max="20" step="1">
+                    <small class="text-muted">3-20 slices</small>
+                </div>
+                <div class="col-md-3">
+                    <label for="window_center" class="form-label">Window Center</label>
+                    <input type="number" class="form-control" id="window_center" name="window_center" 
+                           placeholder="Auto" step="1">
+                    <small class="text-muted">CT windowing (optional)</small>
+                </div>
+                <div class="col-md-3">
+                    <label for="window_width" class="form-label">Window Width</label>
+                    <input type="number" class="form-control" id="window_width" name="window_width" 
+                           placeholder="Auto" step="1">
+                    <small class="text-muted">CT windowing (optional)</small>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check mt-4">
+                        <input class="form-check-input" type="checkbox" id="include_staple" 
+                               name="include_staple" checked>
+                        <label class="form-check-label" for="include_staple">
+                            Include STAPLE Contours
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Windowing Presets:</strong>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="setWindow(40, 400)">Soft Tissue</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="setWindow(80, 200)">Liver</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="setWindow(400, 1500)">Bone</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="setWindow(-600, 1500)">Lung</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="clearWindow()">Auto</button>
+            </div>
+        </form>
+
+        <hr>
+
+        <h5 class="mb-3">
+            <i class="bi bi-bullseye me-2"></i>Select ROIs to Visualize
+            <span class="badge bg-secondary ms-2" id="selectedCount">0 selected</span>
+        </h5>
+
+        {% if rois %}
+        <div class="mb-3">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">
+                <i class="bi bi-check-all me-1"></i>Select All
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="deselectAllBtn">
+                <i class="bi bi-x-square me-1"></i>Deselect All
+            </button>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th width="50">
+                            <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
+                        </th>
+                        <th>ROI Name</th>
+                        <th class="text-center">Structure Sets</th>
+                        <th class="text-center">STAPLE Available</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for roi in rois %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input roi-checkbox" 
+                                   value="{{ roi.name }}" data-roi-name="{{ roi.name }}">
+                        </td>
+                        <td><strong>{{ roi.name }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge bg-primary">{{ roi.structure_sets|length }}</span>
+                        </td>
+                        <td class="text-center">
+                            {% if roi.has_staple %}
+                            <i class="bi bi-check-circle-fill text-success"></i>
+                            {% else %}
+                            <i class="bi bi-x-circle text-muted"></i>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-grid gap-2 mt-4">
+            <button type="button" class="btn btn-success btn-lg" id="generateVisualizationBtn" disabled>
+                <i class="bi bi-image me-2"></i>Generate Visualizations
+            </button>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progress-wrapper" class="mt-4 d-none">
+            <div class="progress" style="height: 25px;">
+                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                     role="progressbar" style="width: 0%">0%</div>
+            </div>
+            <div id="progress-info" class="text-center text-muted mt-2">Processing...</div>
+        </div>
+
+        <div id="result-message" class="mt-3"></div>
+
+        {% else %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            No ROIs found for this series. Please ensure RTStruct files have been converted to NIfTI format.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function setWindow(center, width) {
+    document.getElementById('window_center').value = center;
+    document.getElementById('window_width').value = width;
+}
+
+function clearWindow() {
+    document.getElementById('window_center').value = '';
+    document.getElementById('window_width').value = '';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const generateBtn = document.getElementById('generateVisualizationBtn');
+    const selectedCountBadge = document.getElementById('selectedCount');
+    const progressWrapper = document.getElementById('progress-wrapper');
+    const progressBar = document.getElementById('progress-bar');
+    const progressInfo = document.getElementById('progress-info');
+    const resultMessage = document.getElementById('result-message');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    
+    function updateSelectedCount() {
+        const count = document.querySelectorAll('.roi-checkbox:checked').length;
+        selectedCountBadge.textContent = count + ' selected';
+        generateBtn.disabled = count === 0;
+    }
+    
+    document.querySelectorAll('.roi-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+    
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            document.querySelectorAll('.roi-checkbox').forEach(cb => {
+                cb.checked = this.checked;
+            });
+            updateSelectedCount();
+        });
+    }
+    
+    document.getElementById('selectAllBtn').addEventListener('click', function() {
+        document.querySelectorAll('.roi-checkbox').forEach(cb => cb.checked = true);
+        if (selectAllCheckbox) selectAllCheckbox.checked = true;
+        updateSelectedCount();
+    });
+    
+    document.getElementById('deselectAllBtn').addEventListener('click', function() {
+        document.querySelectorAll('.roi-checkbox').forEach(cb => cb.checked = false);
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+        updateSelectedCount();
+    });
+    
+    generateBtn.addEventListener('click', function() {
+        const selectedRois = Array.from(document.querySelectorAll('.roi-checkbox:checked'))
+            .map(cb => cb.value);
+        
+        if (selectedRois.length === 0) {
+            alert('Please select at least one ROI to visualize');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('series_id', '{{ series.id }}');
+        selectedRois.forEach(roi => formData.append('roi_names[]', roi));
+        formData.append('include_staple', document.getElementById('include_staple').checked);
+        formData.append('num_slices', document.getElementById('num_slices').value);
+        formData.append('window_center', document.getElementById('window_center').value);
+        formData.append('window_width', document.getElementById('window_width').value);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Generating...';
+        progressWrapper.classList.remove('d-none');
+        resultMessage.innerHTML = '';
+        
+        fetch('{% url "generate_visualization" %}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                pollProgress(data.task_id, selectedRois.length);
+            } else {
+                handleError(data.error || 'Visualization generation failed');
+            }
+        })
+        .catch(error => {
+            handleError('Error: ' + error.message);
+        });
+    });
+    
+    function pollProgress(taskId, roiCount) {
+        const progressUrl = `/celery-progress/${taskId}/`;
+        let retryCount = 0;
+        
+        function poll() {
+            fetch(progressUrl)
+                .then(response => response.json())
+                .then(data => {
+                    retryCount = 0;
+                    const progress = data.progress || {};
+                    const current = progress.current || 0;
+                    const total = progress.total || 100;
+                    const description = progress.description || data.description || 'Processing...';
+                    const complete = data.complete || data.state === 'SUCCESS' || data.state === 'FAILURE';
+                    
+                    if (complete) {
+                        handleComplete(data, roiCount);
+                    } else {
+                        const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+                        updateProgress(percent, description);
+                        setTimeout(poll, 1000);
+                    }
+                })
+                .catch(error => {
+                    retryCount++;
+                    if (retryCount < 5) {
+                        setTimeout(poll, 2000);
+                    } else {
+                        handleError('Lost connection to server');
+                    }
+                });
+        }
+        
+        poll();
+    }
+    
+    function updateProgress(percent, message) {
+        progressBar.style.width = percent + '%';
+        progressBar.textContent = percent + '%';
+        progressInfo.textContent = message;
+    }
+    
+    function handleComplete(data, roiCount) {
+        updateProgress(100, 'Complete!');
+        
+        if (data.state === 'SUCCESS') {
+            const result = data.result || {};
+            resultMessage.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>
+                    <strong>Visualization Complete!</strong><br>
+                    Generated ${result.roi_count || roiCount} visualization(s).
+                    <a href="{% url 'view_visualizations' series.id %}" class="btn btn-sm btn-primary ms-3">
+                        <i class="bi bi-images me-1"></i>View Visualizations
+                    </a>
+                </div>
+            `;
+        } else {
+            const errorMsg = data.result?.errors?.join(', ') || 'Unknown error occurred';
+            resultMessage.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${errorMsg}
+                </div>
+            `;
+        }
+        
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = '<i class="bi bi-image me-2"></i>Generate Visualizations';
+    }
+    
+    function handleError(errorMsg) {
+        resultMessage.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${errorMsg}
+            </div>
+        `;
+        progressWrapper.classList.add('d-none');
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = '<i class="bi bi-image me-2"></i>Generate Visualizations';
+    }
+});
+</script>
+
+<style>
+.roi-checkbox {
+    cursor: pointer;
+}
+</style>
+{% endblock %}
