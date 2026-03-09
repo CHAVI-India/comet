@@ -9,3 +9,6 @@ This is an open source application designed to provide a graphical user interfac
 6. Allows users to download the metrics for further downstream analysis.
 
 
+# Installation
+
+A docker image will be provided for running the application locally. Further instructions will be provided in the future here.
