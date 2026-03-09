@@ -655,7 +655,7 @@ def compute_spatial_overlap_metrics(
         'Cosine': None,
         'SurfaceDSC': None,
         'error': None
-    }n
+    }
     
     try:
         reference_roi = RTStructROI.objects.get(id=reference_roi_id)
