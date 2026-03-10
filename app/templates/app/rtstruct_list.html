@@ -49,34 +49,21 @@
                             <th>Study Instance UID</th>
                             <th>Series Instance UID</th>
                             <th>Series Date</th>
-                            <th>Instance SOP UID</th>
                             <th>Referenced Series</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for series in rtstruct_series %}
-                        <tr>
-                            <td colspan="7" class="table-secondary py-1">
-                                <strong>Patient:</strong> {{ series.study.patient.patient_id }} | 
-                                <strong>Study:</strong> {{ series.study.study_instance_uid|truncatechars:30 }}
-                            </td>
-                        </tr>
                         {% for instance in series.dicominstance_set.all %}
                         <tr>
                             <td>
                                 <input type="checkbox" class="form-check-input instance-checkbox" 
-                                       name="instance_ids" value="{{ instance.id }}"
-                                       data-sop-uid="{{ instance.sop_instance_uid|truncatechars:30 }}">
+                                       name="instance_ids" value="{{ instance.id }}">
                             </td>
                             <td>{{ series.study.patient.patient_id }}</td>
                             <td>{{ series.study.study_instance_uid|truncatechars:30 }}</td>
                             <td>{{ series.series_instance_uid|truncatechars:30 }}</td>
                             <td>{{ series.series_date|default:"-" }}</td>
-                            <td>
-                                <small class="text-muted" title="{{ instance.sop_instance_uid }}">
-                                    {{ instance.sop_instance_uid|truncatechars:30 }}
-                                </small>
-                            </td>
                             <td>
                                 {% if instance.referenced_series_instance_uid %}
                                 <small class="text-info" title="{{ instance.referenced_series_instance_uid.series_instance_uid }}">
@@ -89,7 +76,7 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="7" class="text-muted text-center">No instances found for this series</td>
+                            <td colspan="6" class="text-muted text-center">No instances found for this series</td>
                         </tr>
                         {% endfor %}
                         {% endfor %}

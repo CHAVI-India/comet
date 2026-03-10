@@ -1,6 +1,6 @@
 {% extends 'app/base.html' %}
 
-{% block title %}ROIs by Image Series{% endblock %}
+{% block title %}Image Series{% endblock %}
 
 {% block content %}
 <div class="mb-4">
@@ -14,7 +14,7 @@
 
 <div class="card shadow">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h4 class="mb-0"><i class="bi bi-images me-2"></i>ROIs Grouped by Image Series</h4>
+        <h4 class="mb-0"><i class="bi bi-images me-2"></i>Image Series</h4>
         <a href="{% url 'rtstruct_list' %}" class="btn btn-primary btn-sm">
             <i class="bi bi-gear me-1"></i>Extract More ROIs
         </a>
@@ -23,6 +23,11 @@
         {% if series_with_rtstructs %}
         
         <!-- NIfTI Conversion Form -->
+        <div class="alert alert-info mb-3">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>Convert to NIfTI:</strong> Select image series below by checking the checkboxes, then click the "Convert to NIfTI" button to generate NIfTI files.
+        </div>
+        
         <form id="niftiForm" method="post" action="{% url 'nifti_convert' %}">
             {% csrf_token %}
             
@@ -36,8 +41,8 @@
                     </button>
                 </div>
                 <div>
-                    <span id="selectedCount" class="badge bg-secondary me-2">0 selected</span>
-                    <button type="submit" id="convertBtn" class="btn btn-success btn-sm" disabled>
+                    <span id="selectedCount" class="badge bg-secondary me-2 fs-6">0 selected</span>
+                    <button type="submit" id="convertBtn" class="btn btn-success" disabled>
                         <i class="bi bi-file-earmark-zip me-1"></i>Convert to NIfTI
                     </button>
                 </div>
