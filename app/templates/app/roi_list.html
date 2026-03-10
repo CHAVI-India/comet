@@ -20,6 +20,45 @@
         </a>
     </div>
     <div class="card-body">
+        <!-- Search and Filter Form -->
+        <div class="card mb-4 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Search & Filter</h6>
+            </div>
+            <div class="card-body">
+                <form method="get" action="{% url 'roi_list' %}" class="row g-3">
+                    <div class="col-md-3">
+                        <label for="patient_id" class="form-label">Patient ID</label>
+                        <input type="text" class="form-control" id="patient_id" name="patient_id" 
+                               value="{{ search_patient_id }}" placeholder="Search by Patient ID">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="patient_name" class="form-label">Patient Name</label>
+                        <input type="text" class="form-control" id="patient_name" name="patient_name" 
+                               value="{{ search_patient_name }}" placeholder="Search by Patient Name">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="study_date" class="form-label">Study Date</label>
+                        <input type="date" class="form-control" id="study_date" name="study_date" 
+                               value="{{ search_study_date }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="modality" class="form-label">Modality</label>
+                        <input type="text" class="form-control" id="modality" name="modality" 
+                               value="{{ search_modality }}" placeholder="e.g., CT, MR">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search me-1"></i>Search
+                        </button>
+                        <a href="{% url 'roi_list' %}" class="btn btn-outline-secondary ms-2">
+                            <i class="bi bi-x-circle me-1"></i>Clear Filters
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
         {% if series_with_rtstructs %}
         
         <!-- NIfTI Conversion Form -->
@@ -103,9 +142,11 @@
                         <table class="table table-sm table-hover">
                             <thead class="table-light">
                                 <tr>
-                                    <th>RTStruct Series UID</th>
                                     <th>Patient ID</th>
+                                    <th>Patient Name</th>
+                                    <th>Structure Set Label</th>
                                     <th class="text-center">ROI Count</th>
+                                    <th>RTStruct Series UID</th>
                                     <th class="text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -113,13 +154,19 @@
                                 {% for rtstruct in item.rtstruct_series %}
                                 <tr>
                                     <td>
-                                        <code>{{ rtstruct.series_instance_uid|truncatechars:45 }}</code>
+                                        {{ rtstruct.study.patient.patient_id }}
                                     </td>
                                     <td>
-                                        {{ rtstruct.study.patient.patient_id }}
+                                        {{ rtstruct.study.patient.patient_name|default:"-" }}
+                                    </td>
+                                    <td>
+                                        {{ rtstruct.structure_set_label|default:"-" }}
                                     </td>
                                     <td class="text-center">
                                         <span class="badge bg-primary">{{ rtstruct.roi_count }}</span>
+                                    </td>
+                                    <td>
+                                        <code>{{ rtstruct.series_instance_uid|truncatechars:45 }}</code>
                                     </td>
                                     <td class="text-center">
                                         <a href="{% url 'roi_detail' rtstruct.id %}" class="btn btn-sm btn-outline-primary">

@@ -6,9 +6,53 @@
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="bi bi-table me-2"></i>Spatial Overlap Metrics Results</h2>
-        <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-primary">
-            <i class="bi bi-plus-circle me-2"></i>Compute New Metrics
-        </a>
+        <div>
+            <a href="{% url 'spatial_overlap_metrics_csv' %}?patient_id={{ search_patient_id }}&patient_name={{ search_patient_name }}&roi_name={{ search_roi_name }}&structure_set_label={{ search_structure_set_label }}" class="btn btn-success me-2">
+                <i class="bi bi-download me-2"></i>Download CSV
+            </a>
+            <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-2"></i>Compute New Metrics
+            </a>
+        </div>
+    </div>
+
+    <!-- Search and Filter Form -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Search & Filter</h6>
+        </div>
+        <div class="card-body">
+            <form method="get" action="{% url 'spatial_overlap_metrics_list' %}" class="row g-3">
+                <div class="col-md-3">
+                    <label for="patient_id" class="form-label">Patient ID</label>
+                    <input type="text" class="form-control" id="patient_id" name="patient_id" 
+                           value="{{ search_patient_id }}" placeholder="Search by Patient ID">
+                </div>
+                <div class="col-md-3">
+                    <label for="patient_name" class="form-label">Patient Name</label>
+                    <input type="text" class="form-control" id="patient_name" name="patient_name" 
+                           value="{{ search_patient_name }}" placeholder="Search by Patient Name">
+                </div>
+                <div class="col-md-3">
+                    <label for="roi_name" class="form-label">ROI Name</label>
+                    <input type="text" class="form-control" id="roi_name" name="roi_name" 
+                           value="{{ search_roi_name }}" placeholder="Search by ROI Name">
+                </div>
+                <div class="col-md-3">
+                    <label for="structure_set_label" class="form-label">Structure Set Label</label>
+                    <input type="text" class="form-control" id="structure_set_label" name="structure_set_label" 
+                           value="{{ search_structure_set_label }}" placeholder="Search by Label">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search me-1"></i>Search
+                    </button>
+                    <a href="{% url 'spatial_overlap_metrics_list' %}" class="btn btn-outline-secondary ms-2">
+                        <i class="bi bi-x-circle me-1"></i>Clear Filters
+                    </a>
+                </div>
+            </form>
+        </div>
     </div>
 
     {% if results %}
@@ -59,6 +103,16 @@
                                         {{ result.reference_type }}
                                     </span>
                                 </div>
+                                {% if result.reference_roi_description %}
+                                <small class="text-muted d-block mt-1">
+                                    <i class="bi bi-info-circle me-1"></i>{{ result.reference_roi_description }}
+                                </small>
+                                {% endif %}
+                                {% if result.reference_roi_generation_algorithm %}
+                                <small class="text-muted d-block">
+                                    <i class="bi bi-cpu me-1"></i>{{ result.reference_roi_generation_algorithm }}
+                                </small>
+                                {% endif %}
                             </td>
                             <td>
                                 <div>
@@ -70,6 +124,16 @@
                                         {{ result.target_type }}
                                     </span>
                                 </div>
+                                {% if result.target_roi_description %}
+                                <small class="text-muted d-block mt-1">
+                                    <i class="bi bi-info-circle me-1"></i>{{ result.target_roi_description }}
+                                </small>
+                                {% endif %}
+                                {% if result.target_roi_generation_algorithm %}
+                                <small class="text-muted d-block">
+                                    <i class="bi bi-cpu me-1"></i>{{ result.target_roi_generation_algorithm }}
+                                </small>
+                                {% endif %}
                             </td>
                             <td class="text-center">
                                 {% if result.metrics.DSC != None %}

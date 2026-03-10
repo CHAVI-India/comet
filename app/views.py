@@ -136,10 +136,49 @@ def study_detail(request, pk):
 
 def rtstruct_list(request):
     """View to list all RT Structure Set series with their instances."""
-    rtstruct_series = DICOMSeries.objects.filter(
+    from django.db.models import Q
+    
+    # Get search/filter parameters
+    search_patient_id = request.GET.get('patient_id', '').strip()
+    search_patient_name = request.GET.get('patient_name', '').strip()
+    search_study_date = request.GET.get('study_date', '').strip()
+    search_modality = request.GET.get('modality', '').strip()
+    
+    # Build base queryset
+    rtstruct_series_qs = DICOMSeries.objects.filter(
         modality='RTSTRUCT'
     ).select_related('study', 'study__patient').prefetch_related('dicominstance_set')
-    return render(request, "app/rtstruct_list.html", {"rtstruct_series": rtstruct_series})
+    
+    # Apply filters
+    if search_patient_id:
+        rtstruct_series_qs = rtstruct_series_qs.filter(
+            study__patient__patient_id__icontains=search_patient_id
+        )
+    
+    if search_patient_name:
+        rtstruct_series_qs = rtstruct_series_qs.filter(
+            study__patient__patient_name__icontains=search_patient_name
+        )
+    
+    if search_study_date:
+        rtstruct_series_qs = rtstruct_series_qs.filter(
+            study__study_date=search_study_date
+        )
+    
+    if search_modality:
+        rtstruct_series_qs = rtstruct_series_qs.filter(
+            modality__icontains=search_modality
+        )
+    
+    rtstruct_series = rtstruct_series_qs
+    
+    return render(request, "app/rtstruct_list.html", {
+        "rtstruct_series": rtstruct_series,
+        "search_patient_id": search_patient_id,
+        "search_patient_name": search_patient_name,
+        "search_study_date": search_study_date,
+        "search_modality": search_modality,
+    })
 
 
 @require_POST
@@ -187,15 +226,45 @@ def rtstruct_extract(request):
 
 def roi_list(request):
     """View to list all ROIs grouped by referenced image series (CT/MR) with associated RTStructs."""
-    from django.db.models import Count
+    from django.db.models import Count, Q
     
-    # Get all series that are referenced by RTStruct instances (these are CT/MR image series)
-    referenced_series = DICOMSeries.objects.filter(
+    # Get search/filter parameters
+    search_patient_id = request.GET.get('patient_id', '').strip()
+    search_patient_name = request.GET.get('patient_name', '').strip()
+    search_study_date = request.GET.get('study_date', '').strip()
+    search_modality = request.GET.get('modality', '').strip()
+    
+    # Build base queryset for referenced series
+    referenced_series_qs = DICOMSeries.objects.filter(
         referenced_series_uid__isnull=False  # RTStruct instances reference this series
     ).select_related(
         'study', 
         'study__patient'
-    ).annotate(
+    )
+    
+    # Apply filters
+    if search_patient_id:
+        referenced_series_qs = referenced_series_qs.filter(
+            study__patient__patient_id__icontains=search_patient_id
+        )
+    
+    if search_patient_name:
+        referenced_series_qs = referenced_series_qs.filter(
+            study__patient__patient_name__icontains=search_patient_name
+        )
+    
+    if search_study_date:
+        referenced_series_qs = referenced_series_qs.filter(
+            study__study_date=search_study_date
+        )
+    
+    if search_modality:
+        referenced_series_qs = referenced_series_qs.filter(
+            modality__icontains=search_modality
+        )
+    
+    # Get all series that are referenced by RTStruct instances (these are CT/MR image series)
+    referenced_series = referenced_series_qs.annotate(
         rtstruct_count=Count('referenced_series_uid__series', distinct=True)
     ).distinct().order_by(
         'study__patient__patient_id',
@@ -206,7 +275,7 @@ def roi_list(request):
     series_with_rtstructs = []
     for ref_series in referenced_series:
         # Get all RTStruct series that have instances referencing this series
-        rtstruct_series = DICOMSeries.objects.filter(
+        rtstruct_series_qs = DICOMSeries.objects.filter(
             modality='RTSTRUCT',
             dicominstance__referenced_series_instance_uid=ref_series
         ).select_related(
@@ -216,12 +285,25 @@ def roi_list(request):
             roi_count=Count('dicominstance__rtstructroi')
         ).distinct()
         
+        # Add structure_set_label from the first instance of each series
+        rtstruct_series = []
+        for series in rtstruct_series_qs:
+            first_instance = series.dicominstance_set.first()
+            series.structure_set_label = first_instance.structure_set_label if first_instance else None
+            rtstruct_series.append(series)
+        
         series_with_rtstructs.append({
             'referenced_series': ref_series,
             'rtstruct_series': rtstruct_series
         })
     
-    return render(request, "app/roi_list.html", {"series_with_rtstructs": series_with_rtstructs})
+    return render(request, "app/roi_list.html", {
+        "series_with_rtstructs": series_with_rtstructs,
+        "search_patient_id": search_patient_id,
+        "search_patient_name": search_patient_name,
+        "search_study_date": search_study_date,
+        "search_modality": search_modality,
+    })
 
 
 def roi_detail(request, series_id):
@@ -1367,13 +1449,47 @@ def spatial_overlap_metrics_list(request):
     from django.db.models import Q
     from app.models import StructureROIPair
     
-    # Get all StructureROIPair entries
-    pairs = StructureROIPair.objects.select_related(
+    # Get search/filter parameters
+    search_patient_id = request.GET.get('patient_id', '').strip()
+    search_patient_name = request.GET.get('patient_name', '').strip()
+    search_roi_name = request.GET.get('roi_name', '').strip()
+    search_structure_set_label = request.GET.get('structure_set_label', '').strip()
+    
+    # Build base queryset
+    pairs_qs = StructureROIPair.objects.select_related(
         'reference_rt_structure_roi__instance__series__study__patient',
         'target_rt_structure_roi__instance__series__study__patient',
         'reference_rt_structure_roi__staple_roi',
         'target_rt_structure_roi__staple_roi'
-    ).order_by('-created_at')
+    )
+    
+    # Apply filters
+    if search_patient_id:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__instance__series__study__patient__patient_id__icontains=search_patient_id) |
+            Q(target_rt_structure_roi__instance__series__study__patient__patient_id__icontains=search_patient_id)
+        )
+    
+    if search_patient_name:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__instance__series__study__patient__patient_name__icontains=search_patient_name) |
+            Q(target_rt_structure_roi__instance__series__study__patient__patient_name__icontains=search_patient_name)
+        )
+    
+    if search_roi_name:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__roi_name__icontains=search_roi_name) |
+            Q(target_rt_structure_roi__roi_name__icontains=search_roi_name)
+        )
+    
+    if search_structure_set_label:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__instance__structure_set_label__icontains=search_structure_set_label) |
+            Q(target_rt_structure_roi__instance__structure_set_label__icontains=search_structure_set_label)
+        )
+    
+    # Get all StructureROIPair entries
+    pairs = pairs_qs.order_by('-created_at')
     
     # Group metrics by ROI pair
     grouped_results = defaultdict(lambda: {
@@ -1381,6 +1497,10 @@ def spatial_overlap_metrics_list(request):
         'target_roi': None,
         'reference_roi_name': '',
         'target_roi_name': '',
+        'reference_roi_description': '',
+        'reference_roi_generation_algorithm': '',
+        'target_roi_description': '',
+        'target_roi_generation_algorithm': '',
         'reference_type': '',
         'target_type': '',
         'patient_id': '',
@@ -1401,6 +1521,10 @@ def spatial_overlap_metrics_list(request):
             grouped_results[key]['target_roi'] = target_roi
             grouped_results[key]['reference_roi_name'] = ref_roi.roi_name
             grouped_results[key]['target_roi_name'] = target_roi.roi_name
+            grouped_results[key]['reference_roi_description'] = ref_roi.roi_description
+            grouped_results[key]['reference_roi_generation_algorithm'] = ref_roi.roi_generation_algorithm
+            grouped_results[key]['target_roi_description'] = target_roi.roi_description
+            grouped_results[key]['target_roi_generation_algorithm'] = target_roi.roi_generation_algorithm
             grouped_results[key]['reference_type'] = 'STAPLE' if ref_roi.staple_roi else 'RTStruct'
             grouped_results[key]['target_type'] = 'STAPLE' if target_roi.staple_roi else 'RTStruct'
             grouped_results[key]['created_at'] = pair.created_at
@@ -1424,10 +1548,175 @@ def spatial_overlap_metrics_list(request):
     
     context = {
         'results': results_list,
-        'total_pairs': len(results_list)
+        'total_pairs': len(results_list),
+        'search_patient_id': search_patient_id,
+        'search_patient_name': search_patient_name,
+        'search_roi_name': search_roi_name,
+        'search_structure_set_label': search_structure_set_label,
     }
     
     return render(request, 'app/spatial_overlap_metrics_list.html', context)
+
+
+def spatial_overlap_metrics_csv(request):
+    """Export spatial overlap metrics to CSV with same filtering as list view."""
+    import csv
+    from django.http import HttpResponse
+    from collections import defaultdict
+    from django.db.models import Q
+    from app.models import StructureROIPair
+    
+    # Get search/filter parameters (same as list view)
+    search_patient_id = request.GET.get('patient_id', '').strip()
+    search_patient_name = request.GET.get('patient_name', '').strip()
+    search_roi_name = request.GET.get('roi_name', '').strip()
+    search_structure_set_label = request.GET.get('structure_set_label', '').strip()
+    
+    # Build base queryset (same as list view)
+    pairs_qs = StructureROIPair.objects.select_related(
+        'reference_rt_structure_roi__instance__series__study__patient',
+        'target_rt_structure_roi__instance__series__study__patient',
+        'reference_rt_structure_roi__staple_roi',
+        'target_rt_structure_roi__staple_roi'
+    )
+    
+    # Apply filters (same as list view)
+    if search_patient_id:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__instance__series__study__patient__patient_id__icontains=search_patient_id) |
+            Q(target_rt_structure_roi__instance__series__study__patient__patient_id__icontains=search_patient_id)
+        )
+    
+    if search_patient_name:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__instance__series__study__patient__patient_name__icontains=search_patient_name) |
+            Q(target_rt_structure_roi__instance__series__study__patient__patient_name__icontains=search_patient_name)
+        )
+    
+    if search_roi_name:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__roi_name__icontains=search_roi_name) |
+            Q(target_rt_structure_roi__roi_name__icontains=search_roi_name)
+        )
+    
+    if search_structure_set_label:
+        pairs_qs = pairs_qs.filter(
+            Q(reference_rt_structure_roi__instance__structure_set_label__icontains=search_structure_set_label) |
+            Q(target_rt_structure_roi__instance__structure_set_label__icontains=search_structure_set_label)
+        )
+    
+    pairs = pairs_qs.order_by('-created_at')
+    
+    # Group metrics by ROI pair (same as list view)
+    grouped_results = defaultdict(lambda: {
+        'reference_roi': None,
+        'target_roi': None,
+        'reference_roi_name': '',
+        'target_roi_name': '',
+        'reference_roi_description': '',
+        'reference_roi_generation_algorithm': '',
+        'target_roi_description': '',
+        'target_roi_generation_algorithm': '',
+        'reference_type': '',
+        'target_type': '',
+        'patient_id': '',
+        'metrics': {},
+        'created_at': None
+    })
+    
+    for pair in pairs:
+        key = f"{pair.reference_rt_structure_roi.id}_{pair.target_rt_structure_roi.id}"
+        
+        if not grouped_results[key]['reference_roi']:
+            ref_roi = pair.reference_rt_structure_roi
+            target_roi = pair.target_rt_structure_roi
+            
+            grouped_results[key]['reference_roi'] = ref_roi
+            grouped_results[key]['target_roi'] = target_roi
+            grouped_results[key]['reference_roi_name'] = ref_roi.roi_name
+            grouped_results[key]['target_roi_name'] = target_roi.roi_name
+            grouped_results[key]['reference_roi_description'] = ref_roi.roi_description
+            grouped_results[key]['reference_roi_generation_algorithm'] = ref_roi.roi_generation_algorithm
+            grouped_results[key]['target_roi_description'] = target_roi.roi_description
+            grouped_results[key]['target_roi_generation_algorithm'] = target_roi.roi_generation_algorithm
+            grouped_results[key]['reference_type'] = 'STAPLE' if ref_roi.staple_roi else 'RTStruct'
+            grouped_results[key]['target_type'] = 'STAPLE' if target_roi.staple_roi else 'RTStruct'
+            grouped_results[key]['created_at'] = pair.created_at
+            
+            if ref_roi.instance:
+                grouped_results[key]['patient_id'] = ref_roi.instance.series.study.patient.patient_id
+            elif target_roi.instance:
+                grouped_results[key]['patient_id'] = target_roi.instance.series.study.patient.patient_id
+        
+        if pair.metric_calculated:
+            grouped_results[key]['metrics'][pair.metric_calculated] = pair.metric_value
+    
+    results_list = sorted(
+        grouped_results.values(),
+        key=lambda x: x['created_at'] if x['created_at'] else '',
+        reverse=True
+    )
+    
+    # Create CSV response
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="spatial_overlap_metrics.csv"'
+    
+    writer = csv.writer(response)
+    
+    # Write header
+    writer.writerow([
+        'Patient ID',
+        'Reference ROI Name',
+        'Reference ROI Type',
+        'Reference ROI Description',
+        'Reference ROI Generation Algorithm',
+        'Target ROI Name',
+        'Target ROI Type',
+        'Target ROI Description',
+        'Target ROI Generation Algorithm',
+        'DSC',
+        'Jaccard',
+        'HD95 (mm)',
+        'MSD (mm)',
+        'APL (mm)',
+        'OMDC (mm)',
+        'UMDC (mm)',
+        'MDC (mm)',
+        'VOE',
+        'VI',
+        'Cosine',
+        'Surface DSC',
+        'Computed Date'
+    ])
+    
+    # Write data rows
+    for result in results_list:
+        writer.writerow([
+            result['patient_id'],
+            result['reference_roi_name'],
+            result['reference_type'],
+            result['reference_roi_description'] or '',
+            result['reference_roi_generation_algorithm'] or '',
+            result['target_roi_name'],
+            result['target_type'],
+            result['target_roi_description'] or '',
+            result['target_roi_generation_algorithm'] or '',
+            result['metrics'].get('DSC', ''),
+            result['metrics'].get('Jaccard', ''),
+            result['metrics'].get('HD95', ''),
+            result['metrics'].get('MSD', ''),
+            result['metrics'].get('APL', ''),
+            result['metrics'].get('OMDC', ''),
+            result['metrics'].get('UMDC', ''),
+            result['metrics'].get('MDC', ''),
+            result['metrics'].get('VOE', ''),
+            result['metrics'].get('VI', ''),
+            result['metrics'].get('Cosine', ''),
+            result['metrics'].get('SurfaceDSC', ''),
+            result['created_at'].strftime('%Y-%m-%d %H:%M') if result['created_at'] else ''
+        ])
+    
+    return response
 
 
 def get_series_rois_with_nifti(request, series_id):

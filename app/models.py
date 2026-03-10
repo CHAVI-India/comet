@@ -56,6 +56,7 @@ class DICOMInstance(models.Model):
     referenced_series_instance_uid = models.ForeignKey(DICOMSeries, on_delete=models.SET_NULL,related_name="referenced_series_uid",null=True,blank=True,help_text="This is the reference series instance UID for the RTStruct File only")
     instance_number = models.IntegerField(blank=True, null=True)
     instance_file_path = models.CharField(max_length=512, blank=True, null=True)
+    structure_set_label = models.CharField(max_length=512,null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
     
@@ -84,6 +85,8 @@ class RTStructROI(models.Model):
     staple_roi = models.ForeignKey(StapleROI, on_delete=models.CASCADE,null=True,blank=True)
     roi_number = models.IntegerField(null=True,blank = True)
     roi_name = models.CharField(max_length=255)
+    roi_description = models.CharField(max_length=512,null=True,blank=True)
+    roi_generation_algorithm = models.CharField(max_length=255,null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
     

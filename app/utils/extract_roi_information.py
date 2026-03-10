@@ -87,6 +87,8 @@ def extract_roi_information(self, instance_ids):
                 for roi in ds.StructureSetROISequence:
                     roi_number = getattr(roi, 'ROINumber', None)
                     roi_name = getattr(roi, 'ROIName', None)
+                    roi_description = getattr(roi, 'ROIDescription', None)
+                    roi_generation_algorithm = getattr(roi, 'ROIGenerationAlgorithm', None)
 
                     if roi_number is not None and roi_name:
                         # Skip if ROI already exists for this instance
@@ -97,7 +99,9 @@ def extract_roi_information(self, instance_ids):
                         RTStructROI.objects.create(
                             instance=instance,
                             roi_number=roi_number,
-                            roi_name=roi_name
+                            roi_name=roi_name,
+                            roi_description=str(roi_description) if roi_description else None,
+                            roi_generation_algorithm=str(roi_generation_algorithm) if roi_generation_algorithm else None
                         )
                         rois_in_file += 1
                         total_rois_extracted += 1

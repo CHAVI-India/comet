@@ -255,7 +255,9 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
 
                     # Extract referenced series instance UID for RTStruct files
                     referenced_series_uid = None
+                    structure_set_label = None
                     if modality == "RTSTRUCT":
+                        structure_set_label = getattr(ds, "StructureSetLabel", None)
                         # Try to extract from ReferencedFrameOfReferenceSequence
                         try:
                             ref_frame_seq = getattr(ds, "ReferencedFrameOfReferenceSequence", None)
@@ -311,6 +313,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                         "instance_number": instance_number,
                         "instance_file_path": relative_file_path,
                         "referenced_series_instance_uid": referenced_series_uid,
+                        "structure_set_label": str(structure_set_label) if structure_set_label else None,
                     }
 
                     processed_files += 1
@@ -477,6 +480,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                 inst.instance_number = data["instance_number"]
                 inst.instance_file_path = data["instance_file_path"]
                 inst.referenced_series_instance_uid = referenced_series
+                inst.structure_set_label = data.get("structure_set_label")
                 instances_to_update.append(inst)
             else:
                 instances_to_create.append(
@@ -486,6 +490,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
                         instance_number=data["instance_number"],
                         instance_file_path=data["instance_file_path"],
                         referenced_series_instance_uid=referenced_series,
+                        structure_set_label=data.get("structure_set_label"),
                     )
                 )
 
@@ -493,7 +498,7 @@ def process_dicom_archive(self, archive_id, progress_callback=None):
             DICOMInstance.objects.bulk_create(instances_to_create)
         if instances_to_update:
             DICOMInstance.objects.bulk_update(
-                instances_to_update, ["series", "instance_number", "instance_file_path", "referenced_series_instance_uid"]
+                instances_to_update, ["series", "instance_number", "instance_file_path", "referenced_series_instance_uid", "structure_set_label"]
             )
 
         # Update archive status

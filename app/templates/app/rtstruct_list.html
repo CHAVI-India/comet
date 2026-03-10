@@ -15,6 +15,45 @@
         <span class="badge bg-info fs-6">{{ rtstruct_series|length }} Series</span>
     </div>
     <div class="card-body">
+        <!-- Search and Filter Form -->
+        <div class="card mb-4 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Search & Filter</h6>
+            </div>
+            <div class="card-body">
+                <form method="get" action="{% url 'rtstruct_list' %}" class="row g-3">
+                    <div class="col-md-3">
+                        <label for="patient_id" class="form-label">Patient ID</label>
+                        <input type="text" class="form-control" id="patient_id" name="patient_id" 
+                               value="{{ search_patient_id }}" placeholder="Search by Patient ID">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="patient_name" class="form-label">Patient Name</label>
+                        <input type="text" class="form-control" id="patient_name" name="patient_name" 
+                               value="{{ search_patient_name }}" placeholder="Search by Patient Name">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="study_date" class="form-label">Study Date</label>
+                        <input type="date" class="form-control" id="study_date" name="study_date" 
+                               value="{{ search_study_date }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="modality" class="form-label">Modality</label>
+                        <input type="text" class="form-control" id="modality" name="modality" 
+                               value="{{ search_modality }}" placeholder="e.g., RTSTRUCT">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search me-1"></i>Search
+                        </button>
+                        <a href="{% url 'rtstruct_list' %}" class="btn btn-outline-secondary ms-2">
+                            <i class="bi bi-x-circle me-1"></i>Clear Filters
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
         {% if rtstruct_series %}
         <form id="rtstructForm" method="post" action="{% url 'rtstruct_extract' %}">
             {% csrf_token %}
@@ -46,10 +85,11 @@
                                 <input type="checkbox" class="form-check-input" id="selectAll">
                             </th>
                             <th>Patient ID</th>
+                            <th>Patient Name</th>
                             <th>Study Instance UID</th>
                             <th>Series Instance UID</th>
                             <th>Series Date</th>
-                            <th>Referenced Series</th>
+                            <th>Structure Set Label</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -61,22 +101,17 @@
                                        name="instance_ids" value="{{ instance.id }}">
                             </td>
                             <td>{{ series.study.patient.patient_id }}</td>
+                            <td>{{ series.study.patient.patient_name|default:"-" }}</td>
                             <td>{{ series.study.study_instance_uid|truncatechars:30 }}</td>
                             <td>{{ series.series_instance_uid|truncatechars:30 }}</td>
                             <td>{{ series.series_date|default:"-" }}</td>
                             <td>
-                                {% if instance.referenced_series_instance_uid %}
-                                <small class="text-info" title="{{ instance.referenced_series_instance_uid.series_instance_uid }}">
-                                    <i class="bi bi-link-45deg me-1"></i>{{ instance.referenced_series_instance_uid.series_instance_uid|truncatechars:25 }}
-                                </small>
-                                {% else %}
-                                <span class="text-muted">-</span>
-                                {% endif %}
+                                {{ instance.structure_set_label|default:"-" }}
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="6" class="text-muted text-center">No instances found for this series</td>
+                            <td colspan="7" class="text-muted text-center">No instances found for this series</td>
                         </tr>
                         {% endfor %}
                         {% endfor %}
