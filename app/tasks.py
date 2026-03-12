@@ -15,13 +15,12 @@ from app.utils.spatial_overlap_metrics import compute_spatial_overlap_metrics
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, time_limit=60*60*3, soft_time_limit=60*60*2.5)
-def convert_series_to_nifti_chunked(self, series_ids, start_index=0, accumulated_results=None):
+def _convert_series_to_nifti_logic(task_self, series_ids, start_index=0, accumulated_results=None):
     """
-    Celery task to convert DICOM series to NIfTI with chunking support.
-    Can handle timeouts by spawning continuation tasks.
+    Core logic for converting DICOM series to NIfTI with chunking support.
     
     Args:
+        task_self: The Celery task instance (for progress recording)
         series_ids: List of DICOMSeries IDs to convert
         start_index: Index to start processing from (for continuation)
         accumulated_results: Results from previous chunks (for continuation)
@@ -29,7 +28,7 @@ def convert_series_to_nifti_chunked(self, series_ids, start_index=0, accumulated
     Returns:
         Dictionary with conversion results for all series
     """
-    progress_recorder = ProgressRecorder(self)
+    progress_recorder = ProgressRecorder(task_self)
     total_series = len(series_ids)
     start_time = time.time()
     
@@ -143,19 +142,22 @@ def convert_series_to_nifti_chunked(self, series_ids, start_index=0, accumulated
     return results
 
 
+@shared_task(bind=True, time_limit=60*60*3, soft_time_limit=60*60*2.5)
+def convert_series_to_nifti_chunked(self, series_ids, start_index=0, accumulated_results=None):
+    """
+    Celery task to convert DICOM series to NIfTI with chunking support.
+    Can handle timeouts by spawning continuation tasks.
+    """
+    return _convert_series_to_nifti_logic(self, series_ids, start_index, accumulated_results)
+
+
 @shared_task(bind=True)
 def convert_series_to_nifti(self, series_ids):
     """
     Wrapper task that calls the chunked version.
     Maintains backward compatibility with existing code.
-    
-    Args:
-        series_ids: List of DICOMSeries IDs to convert
-        
-    Returns:
-        Dictionary with conversion results for all series
     """
-    return convert_series_to_nifti_chunked(series_ids, start_index=0, accumulated_results=None)
+    return _convert_series_to_nifti_logic(self, series_ids, start_index=0, accumulated_results=None)
 
 
 @shared_task(bind=True)
