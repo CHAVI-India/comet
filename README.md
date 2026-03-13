@@ -60,4 +60,183 @@ COMET (Contour Metrics) is an open source application designed to provide a grap
 
 # Installation
 
-A docker image will be provided for running the application locally. Further instructions will be provided in the future here.
+## Quick Start with Docker Compose
+
+The easiest way to run COMET is using Docker Compose with the pre-built image from AWS ECR Public.
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- At least 4GB RAM available for containers
+
+### 1. Create Environment File
+
+```bash
+cp .env.docker .env
+```
+
+Edit `.env` with your settings:
+
+```env
+# Django Settings
+DJANGO_SECRET_KEY=your-secure-secret-key-change-this
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com
+
+# Database (PostgreSQL 17)
+DJANGO_DB_NAME=comet_db
+DJANGO_DB_USER=comet
+DJANGO_DB_PASSWORD=your-secure-db-password
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=comet
+RABBITMQ_DEFAULT_PASS=your-secure-mq-password
+
+# Celery (optional)
+CELERY_WORKER_CONCURRENCY=4
+```
+
+### 2. Create docker-compose.yml
+
+```yaml
+version: '3.8'
+
+services:
+  comet-db:
+    image: postgres:17
+    container_name: comet-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DJANGO_DB_NAME:-comet_db}
+      POSTGRES_USER: ${DJANGO_DB_USER:-comet}
+      POSTGRES_PASSWORD: ${DJANGO_DB_PASSWORD:-cometpassword}
+    volumes:
+      - comet_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DJANGO_DB_USER:-comet}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  comet-rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: comet-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-comet}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-cometpassword}
+    volumes:
+      - comet_rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management UI
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  comet-web:
+    image: public.ecr.aws/chavi/comet:latest
+    container_name: comet-web
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn spatialmetrics.wsgi:application --bind 0.0.0.0:8000 --workers 4"
+    env_file:
+      - .env
+    environment:
+      DJANGO_DB_HOST: comet-db
+      DJANGO_CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER:-comet}:${RABBITMQ_DEFAULT_PASS:-cometpassword}@comet-rabbitmq:5672//
+    volumes:
+      - comet_media:/app/media
+      - comet_static:/app/staticfiles
+    ports:
+      - "8000:8000"
+    depends_on:
+      comet-db:
+        condition: service_healthy
+      comet-rabbitmq:
+        condition: service_healthy
+
+  comet-celery:
+    image: public.ecr.aws/chavi/comet:latest
+    container_name: comet-celery
+    restart: unless-stopped
+    command: celery -A spatialmetrics worker -l info --concurrency 4
+    env_file:
+      - .env
+    environment:
+      DJANGO_DB_HOST: comet-db
+      DJANGO_CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER:-comet}:${RABBITMQ_DEFAULT_PASS:-cometpassword}@comet-rabbitmq:5672//
+    volumes:
+      - comet_media:/app/media
+    depends_on:
+      comet-db:
+        condition: service_healthy
+      comet-rabbitmq:
+        condition: service_healthy
+
+volumes:
+  comet_postgres_data:
+  comet_rabbitmq_data:
+  comet_media:
+  comet_static:
+```
+
+### 3. Start the Application
+
+```bash
+docker-compose up -d
+```
+
+The application will be available at **http://localhost:8000**
+
+### 4. RabbitMQ Management UI
+
+Access the RabbitMQ management interface at **http://localhost:15672**
+
+Default credentials from `.env`:
+- Username: `comet`
+- Password: (value of `RABBITMQ_DEFAULT_PASS`)
+
+### 5. View Logs
+
+```bash
+# Web application logs
+docker-compose logs -f comet-web
+
+# Celery worker logs
+docker-compose logs -f comet-celery
+
+# All services
+docker-compose logs -f
+```
+
+### 6. Stop the Application
+
+```bash
+docker-compose down
+```
+
+To remove all data (volumes):
+```bash
+docker-compose down -v
+```
+
+## Development Setup
+
+To build locally instead of using the AWS image:
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd comet
+
+# Copy and edit environment file
+cp .env.docker .env
+
+# Build and start with local Dockerfile
+docker-compose -f docker-compose.yml up --build -d
+```

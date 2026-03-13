@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL Database
   comet-db:
-    image: postgres:16-alpine
+    image: postgres:17
     container_name: comet-db
     restart: unless-stopped
     environment:
@@ -41,12 +41,13 @@ services:
 
   # Django Web Application
   comet-web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: public.ecr.aws/chavi/comet:latest
     container_name: comet-web
     restart: unless-stopped
-    command: gunicorn spatialmetrics.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 4 --timeout 300
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn spatialmetrics.wsgi:application --bind 0.0.0.0:8000 --workers 4"
     env_file:
       - .env
     environment:
@@ -56,7 +57,6 @@ services:
     volumes:
       - comet_media:/app/media
       - comet_static:/app/staticfiles
-      - comet_logs:/app/logs
     ports:
       - "${WEB_PORT:-8000}:8000"
     depends_on:
@@ -72,9 +72,7 @@ services:
 
   # Celery Worker
   comet-celery:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: public.ecr.aws/chavi/comet:latest
     container_name: comet-celery
     restart: unless-stopped
     command: celery -A spatialmetrics worker -l ${CELERY_WORKER_LOG_LEVEL:-info} --concurrency ${CELERY_WORKER_CONCURRENCY:-4}
@@ -86,8 +84,6 @@ services:
       DJANGO_CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER:-comet}:${RABBITMQ_DEFAULT_PASS:-cometpassword}@comet-rabbitmq:5672//
     volumes:
       - comet_media:/app/media
-      - comet_static:/app/staticfiles
-      - comet_logs:/app/logs
     depends_on:
       comet-db:
         condition: service_healthy
@@ -101,4 +97,3 @@ volumes:
   comet_rabbitmq_data:
   comet_media:
   comet_static:
-  comet_logs:
