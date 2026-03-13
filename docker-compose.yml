@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  comet-db:
+    image: postgres:16-alpine
+    container_name: comet-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DJANGO_DB_NAME:-comet_db}
+      POSTGRES_USER: ${DJANGO_DB_USER:-comet}
+      POSTGRES_PASSWORD: ${DJANGO_DB_PASSWORD:-cometpassword}
+    volumes:
+      - comet_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DJANGO_DB_USER:-comet} -d ${DJANGO_DB_NAME:-comet_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  comet-rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: comet-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-comet}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-cometpassword}
+    volumes:
+      - comet_rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"      # AMQP port
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"  # Management UI
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Django Web Application
+  comet-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: comet-web
+    restart: unless-stopped
+    command: gunicorn spatialmetrics.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 4 --timeout 300
+    env_file:
+      - .env
+    environment:
+      # Override host settings for Docker network
+      DJANGO_DB_HOST: comet-db
+      DJANGO_CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER:-comet}:${RABBITMQ_DEFAULT_PASS:-cometpassword}@comet-rabbitmq:5672//
+    volumes:
+      - comet_media:/app/media
+      - comet_static:/app/staticfiles
+      - comet_logs:/app/logs
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      comet-db:
+        condition: service_healthy
+      comet-rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Worker
+  comet-celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: comet-celery
+    restart: unless-stopped
+    command: celery -A spatialmetrics worker -l ${CELERY_WORKER_LOG_LEVEL:-info} --concurrency ${CELERY_WORKER_CONCURRENCY:-4}
+    env_file:
+      - .env
+    environment:
+      # Override host settings for Docker network
+      DJANGO_DB_HOST: comet-db
+      DJANGO_CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER:-comet}:${RABBITMQ_DEFAULT_PASS:-cometpassword}@comet-rabbitmq:5672//
+    volumes:
+      - comet_media:/app/media
+      - comet_static:/app/staticfiles
+      - comet_logs:/app/logs
+    depends_on:
+      comet-db:
+        condition: service_healthy
+      comet-rabbitmq:
+        condition: service_healthy
+      comet-web:
+        condition: service_healthy
+
+volumes:
+  comet_postgres_data:
+  comet_rabbitmq_data:
+  comet_media:
+  comet_static:
+  comet_logs:
