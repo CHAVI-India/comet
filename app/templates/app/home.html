@@ -5,74 +5,266 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-8 text-center py-5">
-        <h1 class="display-4 mb-4">
+    <div class="col-lg-10 text-center py-4">
+        <h1 class="display-4 mb-3">
             <img src="{% static 'logo.png' %}" alt="COMET Logo" height="80" class="mb-3">
             <div>COMET - Contour Metrics</div>
         </h1>
-        <p class="lead mb-5">
+        <p class="lead mb-4">
             A web application for processing and analyzing DICOM medical imaging data.
-            Upload DICOM archives, extract metadata, and calculate spatial overlap metrics for contour comparison.
+            Follow the steps below to upload, process, and analyze your DICOM archives.
         </p>
-        <div class="row g-4">
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <i class="bi bi-upload display-4 text-success mb-3"></i>
-                        <h5 class="card-title">Upload</h5>
-                        <p class="card-text">Upload ZIP archives containing DICOM files.</p>
-                        <a href="{% url 'dicom_archive_upload' %}" class="btn btn-outline-success">Upload Archive</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <i class="bi bi-folder display-4 text-info mb-3"></i>
-                        <h5 class="card-title">Manage</h5>
-                        <p class="card-text">View and process uploaded DICOM archives.</p>
-                        <a href="{% url 'dicom_archive_list' %}" class="btn btn-outline-info">View Archives</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <i class="bi bi-people display-4 text-primary mb-3"></i>
-                        <h5 class="card-title">Patients</h5>
-                        <p class="card-text">Browse patient data and studies.</p>
-                        <a href="{% url 'patient_list' %}" class="btn btn-outline-primary">View Patients</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <i class="bi bi-star-fill display-4 text-warning mb-3"></i>
-                        <h5 class="card-title">STAPLE Computation</h5>
-                        <p class="card-text">Compute consensus contours from multiple segmentations.</p>
-                        <a href="{% url 'staple_computation' %}" class="btn btn-outline-warning">Compute STAPLE</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <i class="bi bi-diagram-3 display-4 text-danger mb-3"></i>
-                        <h5 class="card-title">Spatial Overlap Metrics</h5>
-                        <p class="card-text">Compare ROI pairs and compute similarity metrics.</p>
-                        <div class="d-grid gap-2">
-                            <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-outline-danger">
-                                <i class="bi bi-plus-circle me-1"></i>Compute Metrics
-                            </a>
-                            <a href="{% url 'spatial_overlap_metrics_list' %}" class="btn btn-outline-secondary">
-                                <i class="bi bi-table me-1"></i>View Results
-                            </a>
+
+        <!-- Wizard Steps -->
+        <div class="wizard-steps">
+            <!-- Step 1: Upload -->
+            <div class="step-row">
+                <div class="step-badge">1</div>
+                <div class="step-card card border-0 shadow-sm">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon">
+                            <i class="bi bi-cloud-upload display-5 text-primary"></i>
                         </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">Upload DICOM Archive</h5>
+                            <p class="card-text text-muted mb-0">Upload a ZIP archive containing DICOM files (images and structure sets).</p>
+                        </div>
+                        <a href="{% url 'dicom_archive_upload' %}" class="btn btn-primary">
+                            <i class="bi bi-upload me-1"></i>Upload
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="step-connector"></div>
+
+            <!-- Step 2: Extract Archive -->
+            <div class="step-row">
+                <div class="step-badge">2</div>
+                <div class="step-card card border-0 shadow-sm">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon">
+                            <i class="bi bi-file-zip display-5 text-info"></i>
+                        </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">Extract Archive</h5>
+                            <p class="card-text text-muted mb-0">Select an uploaded archive and extract all DICOM data (patients, studies, series).</p>
+                        </div>
+                        <a href="{% url 'dicom_archive_list' %}" class="btn btn-info">
+                            <i class="bi bi-folder-open me-1"></i>Extract
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="step-connector"></div>
+
+            <!-- Step 3: Extract ROI Info -->
+            <div class="step-row">
+                <div class="step-badge">3</div>
+                <div class="step-card card border-0 shadow-sm">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon">
+                            <i class="bi bi-bullseye display-5 text-warning"></i>
+                        </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">Extract ROI Information</h5>
+                            <p class="card-text text-muted mb-0">Extract regions of interest from RT Structure Set files.</p>
+                        </div>
+                        <a href="{% url 'rtstruct_list' %}" class="btn btn-warning">
+                            <i class="bi bi-bullseye me-1"></i>Extract ROIs
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="step-connector"></div>
+
+            <!-- Step 4: Create NIfTI -->
+            <div class="step-row">
+                <div class="step-badge">4</div>
+                <div class="step-card card border-0 shadow-sm">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon">
+                            <i class="bi bi-file-medical display-5 text-success"></i>
+                        </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">Create NIfTI Files</h5>
+                            <p class="card-text text-muted mb-0">Convert DICOM image series and ROIs to NIfTI format for analysis.</p>
+                        </div>
+                        <a href="{% url 'roi_list' %}" class="btn btn-success">
+                            <i class="bi bi-file-earmark-medical me-1"></i>Convert
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="step-connector optional-connector">
+                <span class="optional-badge">Optional</span>
+            </div>
+
+            <!-- Step 5a: STAPLE (Optional) -->
+            <div class="step-row">
+                <div class="step-badge">5a</div>
+                <div class="step-card card border-0 shadow-sm border-warning">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon">
+                            <i class="bi bi-star-fill display-5 text-warning"></i>
+                        </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">Calculate STAPLE Contour <span class="badge bg-warning text-dark">Optional</span></h5>
+                            <p class="card-text text-muted mb-0">Compute consensus contours from multiple observer segmentations using STAPLE algorithm.</p>
+                        </div>
+                        <a href="{% url 'staple_computation' %}" class="btn btn-outline-warning">
+                            <i class="bi bi-star me-1"></i>STAPLE
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="step-connector"></div>
+
+            <!-- Step 5: Compute Metrics -->
+            <div class="step-row">
+                <div class="step-badge">5</div>
+                <div class="step-card card border-0 shadow-sm">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon venn-icon">
+                            <svg viewBox="0 0 100 100" class="venn-svg">
+                                <circle cx="35" cy="50" r="30" fill="rgba(220,53,69,0.5)"/>
+                                <circle cx="65" cy="50" r="30" fill="rgba(220,53,69,0.5)"/>
+                            </svg>
+                        </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">Compute Spatial Overlap Metrics</h5>
+                            <p class="card-text text-muted mb-0">Calculate Dice coefficient, Jaccard index, and other metrics between ROI pairs.</p>
+                        </div>
+                        <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-danger">
+                            <i class="bi bi-calculator me-1"></i>Compute
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="step-connector"></div>
+
+            <!-- Step 6: View Results -->
+            <div class="step-row">
+                <div class="step-badge">6</div>
+                <div class="step-card card border-0 shadow-sm">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="step-icon">
+                            <i class="bi bi-table display-5 text-secondary"></i>
+                        </div>
+                        <div class="step-content text-start flex-grow-1">
+                            <h5 class="card-title mb-1">View Extracted Metrics</h5>
+                            <p class="card-text text-muted mb-0">Browse and download computed spatial overlap metrics for analysis.</p>
+                        </div>
+                        <a href="{% url 'spatial_overlap_metrics_list' %}" class="btn btn-secondary">
+                            <i class="bi bi-eye me-1"></i>View Results
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Quick Links -->
+        <div class="mt-5 pt-4 border-top">
+            <h6 class="text-muted mb-3">Quick Navigation</h6>
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'dicom_archive_list' %}" class="btn btn-sm btn-outline-dark">
+                    <i class="bi bi-folder me-1"></i>Archives
+                </a>
+                <a href="{% url 'patient_list' %}" class="btn btn-sm btn-outline-dark">
+                    <i class="bi bi-people me-1"></i>Patients
+                </a>
+                <a href="{% url 'staple_computation' %}" class="btn btn-sm btn-outline-warning">
+                    <i class="bi bi-star me-1"></i>STAPLE
+                </a>
+            </div>
+        </div>
     </div>
 </div>
+
+<style>
+.wizard-steps {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.step-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.step-badge {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.step-card {
+    flex-grow: 1;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.step-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+.step-icon {
+    width: 70px;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.step-icon i {
+    line-height: 1;
+}
+
+.venn-icon {
+    padding: 5px;
+}
+
+.venn-svg {
+    width: 50px;
+    height: 50px;
+}
+
+.step-content {
+    padding: 0 15px;
+}
+
+.step-connector {
+    width: 2px;
+    height: 30px;
+    background: linear-gradient(to bottom, #dee2e6, #adb5bd);
+    margin-left: 24px;
+    position: relative;
+}
+
+.optional-connector {
+    background: linear-gradient(to bottom, #adb5bd, #ffc107);
+}
+
+.optional-badge {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    color: #6c757d;
+    background: white;
+    padding: 2px 6px;
+    white-space: nowrap;
+}
+</style>
 {% endblock %}
