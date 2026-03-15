@@ -59,130 +59,51 @@
     <div class="alert alert-info mb-4">
         <i class="bi bi-info-circle me-2"></i>
         Showing <strong>{{ total_pairs }}</strong> ROI pair comparison(s) with computed metrics.
+        <br>
+        <small><i class="bi bi-hand-index-thumb me-1"></i><strong>Tip:</strong> Click on any row to expand and view all metrics, ROI details, and volumes.</small>
     </div>
 
     <div class="card shadow">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover table-striped mb-0">
+                <table class="table table-hover mb-0" id="metricsTable">
                     <thead class="table-dark">
                         <tr>
-                            <th>#</th>
-                            <th>Patient ID</th>
-                            <th>Reference ROI</th>
-                            <th>Target ROI</th>
-                            <th class="text-center">Vol Ref (cm³)</th>
-                            <th class="text-center">Vol Target (cm³)</th>
-                            <th class="text-center">DSC</th>
-                            <th class="text-center">Jaccard</th>
-                            <th class="text-center">HD95 (mm)</th>
-                            <th class="text-center">MSD (mm)</th>
-                            <th class="text-center">APL (mm)</th>
-                            <th class="text-center">OMDC (mm)</th>
-                            <th class="text-center">UMDC (mm)</th>
-                            <th class="text-center">MDC (mm)</th>
-                            <th class="text-center">VOE</th>
-                            <th class="text-center">VI</th>
-                            <th class="text-center">Cosine</th>
-                            <th class="text-center">Surface DSC</th>
-                            <th>Computed</th>
+                            <th style="width: 40px;"></th>
+                            <th style="width: 50px;">#</th>
+                            <th style="width: 120px;">Patient ID</th>
+                            <th>ROI Comparison</th>
+                            <th class="text-center" style="width: 100px;">DSC</th>
+                            <th class="text-center" style="width: 100px;">HD95 (mm)</th>
+                            <th class="text-center" style="width: 100px;">MSD (mm)</th>
+                            <th style="width: 140px;">Computed</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for result in results %}
-                        <tr>
-                            <td>{{ forloop.counter }}</td>
-                            <td>
-                                <span class="badge bg-secondary">{{ result.patient_id }}</span>
+                        <!-- Main Row (Clickable) -->
+                        <tr class="main-row" data-bs-toggle="collapse" data-bs-target="#details-{{ forloop.counter }}" style="cursor: pointer;">
+                            <td class="text-center">
+                                <i class="bi bi-chevron-right transition-icon" id="icon-{{ forloop.counter }}"></i>
                             </td>
+                            <td><strong>{{ forloop.counter }}</strong></td>
+                            <td><span class="badge bg-secondary">{{ result.patient_id }}</span></td>
                             <td>
-                                <div>
+                                <div class="d-flex align-items-center">
+                                    <span class="badge {% if result.reference_type == 'STAPLE' %}bg-warning text-dark{% else %}bg-info{% endif %} me-2">
+                                        {% if result.reference_type == 'STAPLE' %}<i class="bi bi-star-fill me-1"></i>{% endif %}{{ result.reference_type }}
+                                    </span>
                                     <strong>{{ result.reference_roi_name }}</strong>
-                                    <span class="badge {% if result.reference_type == 'STAPLE' %}bg-warning text-dark{% else %}bg-info{% endif %} ms-1">
-                                        {% if result.reference_type == 'STAPLE' %}
-                                        <i class="bi bi-star-fill me-1"></i>
-                                        {% endif %}
-                                        {{ result.reference_type }}
+                                    <i class="bi bi-arrow-right mx-2"></i>
+                                    <span class="badge {% if result.target_type == 'STAPLE' %}bg-warning text-dark{% else %}bg-success{% endif %} me-2">
+                                        {% if result.target_type == 'STAPLE' %}<i class="bi bi-star-fill me-1"></i>{% endif %}{{ result.target_type }}
                                     </span>
-                                </div>
-                                {% if result.reference_roi_description %}
-                                <small class="text-muted d-block mt-1">
-                                    <i class="bi bi-info-circle me-1"></i>{{ result.reference_roi_description }}
-                                </small>
-                                {% endif %}
-                                {% if result.reference_roi_generation_algorithm %}
-                                <small class="text-muted d-block">
-                                    {% if 'AUTOMATIC' in result.reference_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-robot me-1"></i>
-                                    {% elif 'SEMIAUTOMATIC' in result.reference_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-cpu me-1"></i>
-                                    {% elif 'MANUAL' in result.reference_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-hand-index me-1"></i>
-                                    {% elif 'STAPLE' in result.reference_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-star-fill me-1"></i>
-                                    {% else %}
-                                        <i class="bi bi-cpu me-1"></i>
-                                    {% endif %}
-                                    {{ result.reference_roi_generation_algorithm }}
-                                </small>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <div>
                                     <strong>{{ result.target_roi_name }}</strong>
-                                    <span class="badge {% if result.target_type == 'STAPLE' %}bg-warning text-dark{% else %}bg-info{% endif %} ms-1">
-                                        {% if result.target_type == 'STAPLE' %}
-                                        <i class="bi bi-star-fill me-1"></i>
-                                        {% endif %}
-                                        {{ result.target_type }}
-                                    </span>
                                 </div>
-                                {% if result.target_roi_description %}
-                                <small class="text-muted d-block mt-1">
-                                    <i class="bi bi-info-circle me-1"></i>{{ result.target_roi_description }}
-                                </small>
-                                {% endif %}
-                                {% if result.target_roi_generation_algorithm %}
-                                <small class="text-muted d-block">
-                                    {% if 'AUTOMATIC' in result.target_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-robot me-1"></i>
-                                    {% elif 'SEMIAUTOMATIC' in result.target_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-cpu me-1"></i>
-                                    {% elif 'MANUAL' in result.target_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-hand-index me-1"></i>
-                                    {% elif 'STAPLE' in result.target_roi_generation_algorithm|upper %}
-                                        <i class="bi bi-star-fill me-1"></i>
-                                    {% else %}
-                                        <i class="bi bi-cpu me-1"></i>
-                                    {% endif %}
-                                    {{ result.target_roi_generation_algorithm }}
-                                </small>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.Volume_Ref != None %}
-                                    {{ result.metrics.Volume_Ref|floatformat:2 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.Volume_Target != None %}
-                                    {{ result.metrics.Volume_Target|floatformat:2 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
                             </td>
                             <td class="text-center">
                                 {% if result.metrics.DSC != None %}
-                                    {{ result.metrics.DSC|floatformat:4 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.Jaccard != None %}
-                                    {{ result.metrics.Jaccard|floatformat:4 }}
+                                    <strong>{{ result.metrics.DSC|floatformat:4 }}</strong>
                                 {% else %}
                                     <span class="text-muted">N/A</span>
                                 {% endif %}
@@ -201,70 +122,149 @@
                                     <span class="text-muted">N/A</span>
                                 {% endif %}
                             </td>
-                            <td class="text-center">
-                                {% if result.metrics.APL != None %}
-                                    {{ result.metrics.APL|floatformat:2 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.OMDC != None %}
-                                    {{ result.metrics.OMDC|floatformat:2 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.UMDC != None %}
-                                    {{ result.metrics.UMDC|floatformat:2 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.MDC != None %}
-                                    {{ result.metrics.MDC|floatformat:2 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.VOE != None %}
-                                    {{ result.metrics.VOE|floatformat:4 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.VI != None %}
-                                    {{ result.metrics.VI|floatformat:4 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.Cosine != None %}
-                                    {{ result.metrics.Cosine|floatformat:4 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% if result.metrics.SurfaceDSC != None %}
-                                    {{ result.metrics.SurfaceDSC|floatformat:4 }}
-                                {% else %}
-                                    <span class="text-muted">N/A</span>
-                                {% endif %}
-                            </td>
                             <td>
                                 <small class="text-muted">
-                                    {% if result.created_at %}
-                                        {{ result.created_at|date:"Y-m-d H:i" }}
-                                    {% else %}
-                                        N/A
-                                    {% endif %}
+                                    {% if result.created_at %}{{ result.created_at|date:"Y-m-d H:i" }}{% else %}N/A{% endif %}
                                 </small>
+                            </td>
+                        </tr>
+                        
+                        <!-- Expandable Details Row -->
+                        <tr class="collapse" id="details-{{ forloop.counter }}">
+                            <td colspan="8" class="p-0">
+                                <div class="card card-body bg-light m-2">
+                                    <div class="row">
+                                        <!-- ROI Details Column -->
+                                        <div class="col-md-6">
+                                            <h6 class="text-primary mb-3"><i class="bi bi-info-circle me-2"></i>ROI Details</h6>
+                                            <div class="mb-3">
+                                                <strong class="text-muted">Reference ROI:</strong>
+                                                <div class="ms-3 mt-1">
+                                                    <div><strong>{{ result.reference_roi_name }}</strong></div>
+                                                    {% if result.reference_roi_description %}
+                                                    <small class="text-muted"><i class="bi bi-info-circle me-1"></i>{{ result.reference_roi_description }}</small>
+                                                    {% endif %}
+                                                    {% if result.reference_roi_generation_algorithm %}
+                                                    <div class="mt-1">
+                                                        <small class="text-muted">
+                                                            {% if 'AUTOMATIC' in result.reference_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-robot me-1"></i>
+                                                            {% elif 'SEMIAUTOMATIC' in result.reference_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-cpu me-1"></i>
+                                                            {% elif 'MANUAL' in result.reference_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-hand-index me-1"></i>
+                                                            {% elif 'STAPLE' in result.reference_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-star-fill me-1"></i>
+                                                            {% else %}
+                                                                <i class="bi bi-cpu me-1"></i>
+                                                            {% endif %}
+                                                            {{ result.reference_roi_generation_algorithm }}
+                                                        </small>
+                                                    </div>
+                                                    {% endif %}
+                                                    <div class="mt-1">
+                                                        <small><strong>Volume:</strong> 
+                                                        {% if result.metrics.Volume_Ref != None %}{{ result.metrics.Volume_Ref|floatformat:2 }} cm³{% else %}N/A{% endif %}
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <strong class="text-muted">Target ROI:</strong>
+                                                <div class="ms-3 mt-1">
+                                                    <div><strong>{{ result.target_roi_name }}</strong></div>
+                                                    {% if result.target_roi_description %}
+                                                    <small class="text-muted"><i class="bi bi-info-circle me-1"></i>{{ result.target_roi_description }}</small>
+                                                    {% endif %}
+                                                    {% if result.target_roi_generation_algorithm %}
+                                                    <div class="mt-1">
+                                                        <small class="text-muted">
+                                                            {% if 'AUTOMATIC' in result.target_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-robot me-1"></i>
+                                                            {% elif 'SEMIAUTOMATIC' in result.target_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-cpu me-1"></i>
+                                                            {% elif 'MANUAL' in result.target_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-hand-index me-1"></i>
+                                                            {% elif 'STAPLE' in result.target_roi_generation_algorithm|upper %}
+                                                                <i class="bi bi-star-fill me-1"></i>
+                                                            {% else %}
+                                                                <i class="bi bi-cpu me-1"></i>
+                                                            {% endif %}
+                                                            {{ result.target_roi_generation_algorithm }}
+                                                        </small>
+                                                    </div>
+                                                    {% endif %}
+                                                    <div class="mt-1">
+                                                        <small><strong>Volume:</strong> 
+                                                        {% if result.metrics.Volume_Target != None %}{{ result.metrics.Volume_Target|floatformat:2 }} cm³{% else %}N/A{% endif %}
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Metrics Column -->
+                                        <div class="col-md-6">
+                                            <h6 class="text-success mb-3"><i class="bi bi-graph-up me-2"></i>All Metrics</h6>
+                                            <div class="row g-2">
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">Jaccard</small>
+                                                        <strong>{% if result.metrics.Jaccard != None %}{{ result.metrics.Jaccard|floatformat:4 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">APL (mm)</small>
+                                                        <strong>{% if result.metrics.APL != None %}{{ result.metrics.APL|floatformat:2 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">Surface DSC</small>
+                                                        <strong>{% if result.metrics.SurfaceDSC != None %}{{ result.metrics.SurfaceDSC|floatformat:4 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">OMDC (mm)</small>
+                                                        <strong>{% if result.metrics.OMDC != None %}{{ result.metrics.OMDC|floatformat:2 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">UMDC (mm)</small>
+                                                        <strong>{% if result.metrics.UMDC != None %}{{ result.metrics.UMDC|floatformat:2 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">MDC (mm)</small>
+                                                        <strong>{% if result.metrics.MDC != None %}{{ result.metrics.MDC|floatformat:2 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">VOE</small>
+                                                        <strong>{% if result.metrics.VOE != None %}{{ result.metrics.VOE|floatformat:4 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">VI</small>
+                                                        <strong>{% if result.metrics.VI != None %}{{ result.metrics.VI|floatformat:4 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6 col-lg-4">
+                                                    <div class="p-2 bg-white rounded">
+                                                        <small class="text-muted d-block">Cosine</small>
+                                                        <strong>{% if result.metrics.Cosine != None %}{{ result.metrics.Cosine|floatformat:4 }}{% else %}N/A{% endif %}</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -337,4 +337,39 @@
     </div>
     {% endif %}
 </div>
+
+<style>
+    .main-row:hover {
+        background-color: #f8f9fa;
+    }
+    .transition-icon {
+        transition: transform 0.3s ease;
+    }
+    .collapsed .transition-icon {
+        transform: rotate(0deg);
+    }
+    .transition-icon.rotated {
+        transform: rotate(90deg);
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle chevron icon rotation on row click
+        const mainRows = document.querySelectorAll('.main-row');
+        
+        mainRows.forEach(function(row) {
+            row.addEventListener('click', function() {
+                const target = this.getAttribute('data-bs-target');
+                const iconId = target.replace('#details-', 'icon-');
+                const icon = document.getElementById(iconId);
+                
+                if (icon) {
+                    icon.classList.toggle('rotated');
+                }
+            });
+        });
+    });
+</script>
+
 {% endblock %}
