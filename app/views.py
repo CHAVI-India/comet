@@ -1907,3 +1907,58 @@ def get_niivue_data(request, series_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# Simple Task Monitoring Views
+from django_celery_results.models import TaskResult
+
+
+def task_list(request):
+    """Display list of all Celery tasks from database"""
+    # Get filter parameters
+    status_filter = request.GET.get('status', 'all')
+    
+    # Get tasks from database
+    tasks = TaskResult.objects.all().order_by('-date_created')[:100]
+    
+    # Apply status filter
+    if status_filter != 'all':
+        tasks = tasks.filter(status=status_filter)
+    
+    # Get counts
+    all_tasks = TaskResult.objects.all()
+    active_count = all_tasks.filter(status__in=['PENDING', 'STARTED', 'PROGRESS']).count()
+    success_count = all_tasks.filter(status='SUCCESS').count()
+    failure_count = all_tasks.filter(status='FAILURE').count()
+    
+    context = {
+        'tasks': tasks,
+        'status_filter': status_filter,
+        'active_count': active_count,
+        'success_count': success_count,
+        'failure_count': failure_count,
+    }
+    
+    return render(request, 'app/task_list.html', context)
+
+
+def task_detail(request, task_id):
+    """Display detailed information about a specific task"""
+    task = TaskResult.objects.filter(task_id=task_id).first()
+    
+    if not task:
+        messages.error(request, f'Task {task_id} not found')
+        return redirect('task_list')
+    
+    # Calculate duration
+    duration_seconds = None
+    if task.date_done and task.date_started:
+        delta = task.date_done - task.date_started
+        duration_seconds = delta.total_seconds()
+    
+    context = {
+        'task': task,
+        'duration_seconds': duration_seconds,
+    }
+    
+    return render(request, 'app/task_detail.html', context)

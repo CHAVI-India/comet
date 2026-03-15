@@ -1,0 +1,125 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Task Details{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{% url 'task_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Tasks
+    </a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header {% if task.status == 'SUCCESS' %}bg-success{% elif task.status == 'FAILURE' %}bg-danger{% else %}bg-primary{% endif %} text-white">
+        <h4 class="mb-0">
+            <i class="bi bi-info-circle me-2"></i>Task Details
+        </h4>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h5>Task Information</h5>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="150">Task Name:</th>
+                        <td><strong>{{ task.task_name|default:"Unknown Task" }}</strong></td>
+                    </tr>
+                    <tr>
+                        <th>Task ID:</th>
+                        <td><code>{{ task.task_id }}</code></td>
+                    </tr>
+                    <tr>
+                        <th>Status:</th>
+                        <td>
+                            {% if task.status == 'SUCCESS' %}
+                                <span class="badge bg-success">Success</span>
+                            {% elif task.status == 'FAILURE' %}
+                                <span class="badge bg-danger">Failed</span>
+                            {% elif task.status == 'PENDING' %}
+                                <span class="badge bg-secondary">Pending</span>
+                            {% elif task.status == 'STARTED' or task.status == 'PROGRESS' %}
+                                <span class="badge bg-primary">Running</span>
+                            {% else %}
+                                <span class="badge bg-warning">{{ task.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h5>Timing</h5>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="150">Created:</th>
+                        <td>{{ task.date_created|date:"M d, Y H:i:s" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Started:</th>
+                        <td>
+                            {% if task.date_started %}
+                                {{ task.date_started|date:"M d, Y H:i:s" }}
+                            {% else %}
+                                <span class="text-muted">Not started</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Completed:</th>
+                        <td>
+                            {% if task.date_done %}
+                                {{ task.date_done|date:"M d, Y H:i:s" }}
+                            {% else %}
+                                <span class="text-muted">Not completed</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Duration:</th>
+                        <td>
+                            {% if duration_seconds is not None %}
+                                {{ duration_seconds|floatformat:1 }} seconds
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        {% if task.result %}
+        <div class="mb-4">
+            <h5>Result</h5>
+            <div class="card bg-light">
+                <div class="card-body">
+                    <pre class="mb-0"><code>{{ task.result }}</code></pre>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if task.traceback %}
+        <div class="mb-4">
+            <h5 class="text-danger">Error Traceback</h5>
+            <div class="card border-danger">
+                <div class="card-body">
+                    <pre class="mb-0 text-danger"><code>{{ task.traceback }}</code></pre>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if task.status == 'PENDING' or task.status == 'STARTED' or task.status == 'PROGRESS' %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            This task is still running. The page will auto-refresh every 5 seconds.
+        </div>
+        <script>
+        setInterval(function() {
+            location.reload();
+        }, 5000);
+        </script>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

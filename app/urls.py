@@ -38,4 +38,7 @@ urlpatterns = [
     path("api/series/<int:series_id>/rois-with-nifti/", views.get_series_rois_with_nifti, name="get_series_rois_with_nifti"),
     path("visualize-webgl/<int:series_id>/", views.visualize_niivue, name="visualize_niivue"),
     path("api/niivue-data/<int:series_id>/", views.get_niivue_data, name="get_niivue_data"),
+    # Task Monitoring
+    path("tasks/", views.task_list, name="task_list"),
+    path("tasks/<str:task_id>/", views.task_detail, name="task_detail"),
 ]

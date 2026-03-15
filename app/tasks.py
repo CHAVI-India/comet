@@ -142,7 +142,7 @@ def _convert_series_to_nifti_logic(task_self, series_ids, start_index=0, accumul
     return results
 
 
-@shared_task(bind=True, time_limit=60*60*3, soft_time_limit=60*60*2.5)
+@shared_task(bind=True, name='app.tasks.convert_series_to_nifti_chunked', time_limit=60*60*3, soft_time_limit=60*60*2.5)
 def convert_series_to_nifti_chunked(self, series_ids, start_index=0, accumulated_results=None):
     """
     Celery task to convert DICOM series to NIfTI with chunking support.
@@ -151,7 +151,7 @@ def convert_series_to_nifti_chunked(self, series_ids, start_index=0, accumulated
     return _convert_series_to_nifti_logic(self, series_ids, start_index, accumulated_results)
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.convert_series_to_nifti')
 def convert_series_to_nifti(self, series_ids):
     """
     Wrapper task that calls the chunked version.
@@ -160,7 +160,7 @@ def convert_series_to_nifti(self, series_ids):
     return _convert_series_to_nifti_logic(self, series_ids, start_index=0, accumulated_results=None)
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.compute_staple_task')
 def compute_staple_task(self, image_series_id, structure_name, rtstruct_series_ids, threshold=0.95):
     """
     Celery task to compute STAPLE contour from multiple structure sets.
@@ -202,7 +202,7 @@ def compute_staple_task(self, image_series_id, structure_name, rtstruct_series_i
     return result
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.compute_single_spatial_overlap')
 def compute_single_spatial_overlap(self, pair_data):
     """
     Celery task to compute spatial overlap metrics for a single ROI pair.
@@ -276,7 +276,7 @@ def compute_single_spatial_overlap(self, pair_data):
         }
 
 
-@shared_task
+@shared_task(name='app.tasks.collect_spatial_overlap_results')
 def collect_spatial_overlap_results(results):
     """
     Callback task to collect and aggregate results from parallel spatial overlap computations.
@@ -315,7 +315,7 @@ def collect_spatial_overlap_results(results):
     }
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.compute_spatial_overlap_task_parallel')
 def compute_spatial_overlap_task_parallel(self, roi_pairs, batch_size=4):
     """
     Celery task to compute spatial overlap metrics for multiple ROI pairs in parallel.
@@ -377,7 +377,7 @@ def compute_spatial_overlap_task_parallel(self, roi_pairs, batch_size=4):
     }
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.compute_spatial_overlap_task')
 def compute_spatial_overlap_task(self, roi_pairs):
     """
     Celery task to compute spatial overlap metrics for multiple ROI pairs.
@@ -479,7 +479,7 @@ def compute_spatial_overlap_task(self, roi_pairs):
     return results
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.compute_batch_staple_task')
 def compute_batch_staple_task(self, staple_requests):
     """
     Celery task to compute STAPLE contours for multiple ROIs across multiple patients.
@@ -578,7 +578,7 @@ def compute_batch_staple_task(self, staple_requests):
     return results
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.generate_visualization_task')
 def generate_visualization_task(self, image_series_id, roi_names, include_staple=True, 
                                 window_center=None, window_width=None):
     """

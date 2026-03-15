@@ -1,0 +1,143 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Background Tasks{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Home
+    </a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">
+            <i class="bi bi-list-task me-2"></i>Background Tasks
+        </h4>
+    </div>
+    <div class="card-body">
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        <h3 class="text-primary mb-0">{{ active_count }}</h3>
+                        <small class="text-muted">Active Tasks</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-success">
+                    <div class="card-body text-center">
+                        <h3 class="text-success mb-0">{{ success_count }}</h3>
+                        <small class="text-muted">Completed</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-danger">
+                    <div class="card-body text-center">
+                        <h3 class="text-danger mb-0">{{ failure_count }}</h3>
+                        <small class="text-muted">Failed</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label"><strong>Filter by Status:</strong></label>
+                <select id="statusFilter" class="form-select">
+                    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+                    <option value="PENDING" {% if status_filter == 'PENDING' %}selected{% endif %}>Pending</option>
+                    <option value="STARTED" {% if status_filter == 'STARTED' %}selected{% endif %}>Started</option>
+                    <option value="PROGRESS" {% if status_filter == 'PROGRESS' %}selected{% endif %}>In Progress</option>
+                    <option value="SUCCESS" {% if status_filter == 'SUCCESS' %}selected{% endif %}>Success</option>
+                    <option value="FAILURE" {% if status_filter == 'FAILURE' %}selected{% endif %}>Failure</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Tasks Table -->
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th width="50">Status</th>
+                        <th>Task Name</th>
+                        <th>Created</th>
+                        <th>Duration</th>
+                        <th width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr>
+                        <td>
+                            {% if task.status == 'SUCCESS' %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i></span>
+                            {% elif task.status == 'FAILURE' %}
+                                <span class="badge bg-danger"><i class="bi bi-x-circle"></i></span>
+                            {% elif task.status == 'PENDING' %}
+                                <span class="badge bg-secondary"><i class="bi bi-clock"></i></span>
+                            {% elif task.status == 'STARTED' or task.status == 'PROGRESS' %}
+                                <span class="badge bg-primary">
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                </span>
+                            {% else %}
+                                <span class="badge bg-warning">{{ task.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ task.task_name|default:"Unknown Task" }}</strong>
+                            <br><small class="text-muted">ID: {{ task.task_id|slice:":8" }}...</small>
+                        </td>
+                        <td>
+                            <small>{{ task.date_created|date:"M d, Y H:i" }}</small>
+                        </td>
+                        <td>
+                            {% if task.date_done and task.date_started %}
+                                <small>{{ task.date_done|timesince:task.date_started }}</small>
+                            {% elif task.date_started %}
+                                <small class="text-muted">Running...</small>
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'task_detail' task.task_id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox me-2"></i>No tasks found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Filter handler
+document.getElementById('statusFilter').addEventListener('change', function() {
+    const url = new URL(window.location);
+    url.searchParams.set('status', this.value);
+    window.location = url;
+});
+
+// Auto-refresh active tasks every 10 seconds
+const activeCount = {{ active_count }};
+if (activeCount > 0) {
+    setInterval(function() {
+        location.reload();
+    }, 10000);
+}
+</script>
+{% endblock %}
