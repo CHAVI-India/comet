@@ -15,146 +15,145 @@
             Follow the steps below to upload, process, and analyze your DICOM archives.
         </p>
 
-        <!-- Wizard Steps -->
-        <div class="wizard-steps">
-            <!-- Step 1: Upload -->
-            <div class="step-row">
+        <!-- Wizard Steps - Vertical Flowchart -->
+        <div class="flowchart-container">
+            <!-- Step 1 -->
+            <div class="flow-step">
                 <div class="step-badge">1</div>
                 <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon">
-                            <i class="bi bi-cloud-upload display-5 text-primary"></i>
+                            <i class="bi bi-cloud-upload display-4 text-primary"></i>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
+                        <div class="step-content flex-grow-1">
                             <h5 class="card-title mb-1">Upload DICOM Archive</h5>
                             <p class="card-text text-muted mb-0">Upload a ZIP archive containing DICOM files (images and structure sets).</p>
                         </div>
-                        <a href="{% url 'dicom_archive_upload' %}" class="btn btn-primary">
+                        <a href="{% url 'dicom_archive_upload' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-upload me-1"></i>Upload
                         </a>
                     </div>
                 </div>
             </div>
-            <div class="step-connector"></div>
+            <div class="flow-connector"></div>
 
-            <!-- Step 2: Extract Archive -->
-            <div class="step-row">
+            <!-- Step 2 -->
+            <div class="flow-step">
                 <div class="step-badge">2</div>
                 <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon">
-                            <i class="bi bi-file-zip display-5 text-info"></i>
+                            <i class="bi bi-file-zip display-4 text-primary"></i>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
+                        <div class="step-content flex-grow-1">
                             <h5 class="card-title mb-1">Extract Archive</h5>
                             <p class="card-text text-muted mb-0">Select an uploaded archive and extract all DICOM data (patients, studies, series).</p>
                         </div>
-                        <a href="{% url 'dicom_archive_list' %}" class="btn btn-info">
+                        <a href="{% url 'dicom_archive_list' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-folder-open me-1"></i>Extract
                         </a>
                     </div>
                 </div>
             </div>
-            <div class="step-connector"></div>
+            <div class="flow-connector"></div>
 
-            <!-- Step 3: Extract ROI Info -->
-            <div class="step-row">
+            <!-- Step 3 -->
+            <div class="flow-step">
                 <div class="step-badge">3</div>
                 <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon">
-                            <i class="bi bi-bullseye display-5 text-warning"></i>
+                            <i class="bi bi-bullseye display-4 text-primary"></i>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
+                        <div class="step-content flex-grow-1">
                             <h5 class="card-title mb-1">Extract ROI Information</h5>
                             <p class="card-text text-muted mb-0">Extract regions of interest from RT Structure Set files.</p>
                         </div>
-                        <a href="{% url 'rtstruct_list' %}" class="btn btn-warning">
+                        <a href="{% url 'rtstruct_list' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-bullseye me-1"></i>Extract ROIs
                         </a>
                     </div>
                 </div>
             </div>
-            <div class="step-connector"></div>
+            <div class="flow-connector"></div>
 
-            <!-- Step 4: Create NIfTI -->
-            <div class="step-row">
+            <!-- Step 4 -->
+            <div class="flow-step">
                 <div class="step-badge">4</div>
                 <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon">
-                            <i class="bi bi-file-medical display-5 text-success"></i>
+                            <i class="bi bi-file-medical display-4 text-primary"></i>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
+                        <div class="step-content flex-grow-1">
                             <h5 class="card-title mb-1">Create NIfTI Files</h5>
                             <p class="card-text text-muted mb-0">Convert DICOM image series and ROIs to NIfTI format for analysis.</p>
                         </div>
-                        <a href="{% url 'roi_list' %}" class="btn btn-success">
+                        <a href="{% url 'roi_list' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-file-earmark-medical me-1"></i>Convert
                         </a>
                     </div>
                 </div>
             </div>
-            <div class="step-connector optional-connector">
-                <span class="optional-badge">Optional</span>
-            </div>
 
-            <!-- Step 5a: STAPLE (Optional) -->
-            <div class="step-row">
-                <div class="step-badge">5a</div>
-                <div class="step-card card border-0 shadow-sm border-warning">
+            <div class="flow-connector"></div>
+
+            <!-- Step 4b - Optional -->
+            <div class="flow-step optional-step">
+                <div class="step-badge optional-badge">4b</div>
+                <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon">
-                            <i class="bi bi-star-fill display-5 text-warning"></i>
+                            <i class="bi bi-star-fill display-4 text-warning"></i>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
-                            <h5 class="card-title mb-1">Calculate STAPLE Contour <span class="badge bg-warning text-dark">Optional</span></h5>
-                            <p class="card-text text-muted mb-0">Compute consensus contours from multiple observer segmentations using STAPLE algorithm.</p>
+                        <div class="step-content flex-grow-1">
+                            <h5 class="card-title mb-1">Calculate STAPLE Contour <span class="badge bg-warning text-dark ms-2">Optional</span></h5>
+                            <p class="card-text mb-0">Compute consensus contours from multiple observer segmentations using STAPLE algorithm.</p>
                         </div>
-                        <a href="{% url 'staple_computation' %}" class="btn btn-outline-warning">
+                        <a href="{% url 'staple_computation' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-star me-1"></i>STAPLE
                         </a>
                     </div>
                 </div>
             </div>
-            <div class="step-connector"></div>
+            <div class="flow-connector"></div>
 
-            <!-- Step 5: Compute Metrics -->
-            <div class="step-row">
+            <!-- Step 5 -->
+            <div class="flow-step">
                 <div class="step-badge">5</div>
                 <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon venn-icon">
                             <svg viewBox="0 0 100 100" class="venn-svg">
-                                <circle cx="35" cy="50" r="30" fill="rgba(220,53,69,0.5)"/>
-                                <circle cx="65" cy="50" r="30" fill="rgba(220,53,69,0.5)"/>
+                                <circle cx="35" cy="50" r="30" fill="rgba(13,110,253,0.5)"/>
+                                <circle cx="65" cy="50" r="30" fill="rgba(13,110,253,0.5)"/>
                             </svg>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
+                        <div class="step-content flex-grow-1">
                             <h5 class="card-title mb-1">Compute Spatial Overlap Metrics</h5>
-                            <p class="card-text text-muted mb-0">Calculate Dice coefficient, Jaccard index, and other metrics between ROI pairs.</p>
+                            <p class="card-text text-muted mb-0">Calculate Dice coefficient, Jaccard index, and other metrics between any pair of ROIs including STAPLE contour.</p>
                         </div>
-                        <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-danger">
+                        <a href="{% url 'spatial_overlap_metrics' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-calculator me-1"></i>Compute
                         </a>
                     </div>
                 </div>
             </div>
-            <div class="step-connector"></div>
+            <div class="flow-connector"></div>
 
-            <!-- Step 6: View Results -->
-            <div class="step-row">
+            <!-- Step 6 -->
+            <div class="flow-step">
                 <div class="step-badge">6</div>
                 <div class="step-card card border-0 shadow-sm">
                     <div class="card-body d-flex align-items-center">
                         <div class="step-icon">
-                            <i class="bi bi-table display-5 text-secondary"></i>
+                            <i class="bi bi-table display-4 text-primary"></i>
                         </div>
-                        <div class="step-content text-start flex-grow-1">
+                        <div class="step-content flex-grow-1">
                             <h5 class="card-title mb-1">View Extracted Metrics</h5>
                             <p class="card-text text-muted mb-0">Browse and download computed spatial overlap metrics for analysis.</p>
                         </div>
-                        <a href="{% url 'spatial_overlap_metrics_list' %}" class="btn btn-secondary">
+                        <a href="{% url 'spatial_overlap_metrics_list' %}" class="btn btn-primary btn-fixed-width">
                             <i class="bi bi-eye me-1"></i>View Results
                         </a>
                     </div>
@@ -181,15 +180,17 @@
 </div>
 
 <style>
-.wizard-steps {
-    max-width: 800px;
+.flowchart-container {
+    width: 100%;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
-.step-row {
+.flow-step {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 20px;
+    margin: 0 auto;
 }
 
 .step-badge {
@@ -213,17 +214,21 @@
 }
 
 .step-card:hover {
-    transform: translateY(-2px);
+    transform: translateX(5px);
     box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
 }
 
+.step-card .card-body {
+    padding: 1.25rem;
+}
+
 .step-icon {
-    width: 70px;
-    height: 70px;
+    width: 80px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    margin-right: 15px;
 }
 
 .step-icon i {
@@ -235,36 +240,72 @@
 }
 
 .venn-svg {
-    width: 50px;
-    height: 50px;
+    width: 60px;
+    height: 60px;
 }
 
 .step-content {
+    text-align: left;
     padding: 0 15px;
 }
 
-.step-connector {
-    width: 2px;
+.flow-connector {
+    width: 3px;
     height: 30px;
-    background: linear-gradient(to bottom, #dee2e6, #adb5bd);
-    margin-left: 24px;
-    position: relative;
+    background: linear-gradient(to bottom, #0d6efd, #adb5bd);
+    margin: 0 auto;
+    margin-left: 25px;
 }
 
-.optional-connector {
-    background: linear-gradient(to bottom, #adb5bd, #ffc107);
+.optional-step .step-card {
+    background: linear-gradient(135deg, #fff3cd 0%, #fffbeb 100%);
+}
+
+.optional-step .step-content .card-title,
+.optional-step .step-content .card-text {
+    color: #856404;
 }
 
 .optional-badge {
-    position: absolute;
-    left: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 0.7rem;
-    color: #6c757d;
-    background: white;
-    padding: 2px 6px;
-    white-space: nowrap;
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+}
+
+.btn-fixed-width {
+    min-width: 150px;
+}
+
+@media (max-width: 768px) {
+    .flow-step {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .step-icon {
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+    
+    .step-content {
+        text-align: center;
+        padding: 0;
+    }
+    
+    .flow-connector {
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .main-path {
+        padding-left: 0;
+    }
+    
+    .diverge-connector {
+        flex-direction: column;
+    }
+    
+    .main-path, .optional-path {
+        width: 100%;
+    }
 }
 </style>
 {% endblock %}
