@@ -112,7 +112,18 @@
                                 {% endif %}
                                 {% if result.reference_roi_generation_algorithm %}
                                 <small class="text-muted d-block">
-                                    <i class="bi bi-cpu me-1"></i>{{ result.reference_roi_generation_algorithm }}
+                                    {% if 'AUTOMATIC' in result.reference_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-robot me-1"></i>
+                                    {% elif 'SEMIAUTOMATIC' in result.reference_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-cpu me-1"></i>
+                                    {% elif 'MANUAL' in result.reference_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-hand-index me-1"></i>
+                                    {% elif 'STAPLE' in result.reference_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-star-fill me-1"></i>
+                                    {% else %}
+                                        <i class="bi bi-cpu me-1"></i>
+                                    {% endif %}
+                                    {{ result.reference_roi_generation_algorithm }}
                                 </small>
                                 {% endif %}
                             </td>
@@ -133,7 +144,18 @@
                                 {% endif %}
                                 {% if result.target_roi_generation_algorithm %}
                                 <small class="text-muted d-block">
-                                    <i class="bi bi-cpu me-1"></i>{{ result.target_roi_generation_algorithm }}
+                                    {% if 'AUTOMATIC' in result.target_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-robot me-1"></i>
+                                    {% elif 'SEMIAUTOMATIC' in result.target_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-cpu me-1"></i>
+                                    {% elif 'MANUAL' in result.target_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-hand-index me-1"></i>
+                                    {% elif 'STAPLE' in result.target_roi_generation_algorithm|upper %}
+                                        <i class="bi bi-star-fill me-1"></i>
+                                    {% else %}
+                                        <i class="bi bi-cpu me-1"></i>
+                                    {% endif %}
+                                    {{ result.target_roi_generation_algorithm }}
                                 </small>
                                 {% endif %}
                             </td>
