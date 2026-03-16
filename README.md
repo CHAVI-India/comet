@@ -1,3 +1,6 @@
+
+[![DOI](https://zenodo.org/badge/1175037586.svg)](https://doi.org/10.5281/zenodo.19044313)
+
 # COMET - Contour Metrics
 
 COMET (Contour Metrics) is an open source application designed to provide a graphical user interface for computation of spatial overlap metrics between structures delineated in radiotherapy. This application is built using Django and provides users with a web interface to:
@@ -319,3 +322,5 @@ cp .env.docker .env
 # Build and start with local Dockerfile
 docker-compose -f docker-compose.yml up --build -d
 ```
+
+ 
