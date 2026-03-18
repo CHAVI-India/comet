@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import FileExtensionValidator
 from django.db.models import Q
+from django.contrib.auth.models import User
 
 # Create your models here.
 
@@ -87,6 +88,7 @@ class RTStructROI(models.Model):
     roi_name = models.CharField(max_length=255)
     roi_description = models.CharField(max_length=512,null=True,blank=True)
     roi_generation_algorithm = models.CharField(max_length=255,null=True,blank=True)
+    roi_segmentation_username_id = models.ForeignKey(User, on_delete=models.SET_NULL,null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
     
