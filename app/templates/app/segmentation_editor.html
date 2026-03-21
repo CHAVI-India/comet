@@ -157,7 +157,7 @@
 // Extract Cornerstone3D modules from bundle
 const { core, tools, niftiVolumeLoader } = CornerstoneSegmentation;
 const { init: coreInit, RenderingEngine, Enums, volumeLoader, cache, setVolumesForViewports, imageLoader } = core;
-const { init: toolsInit, ToolGroupManager, Enums: ToolEnums, segmentation, BrushTool, addTool } = tools;
+const { init: toolsInit, ToolGroupManager, Enums: ToolEnums, segmentation, BrushTool, StackScrollMouseWheelTool, addTool } = tools;
 const { init: niftiVolumeLoaderInit, createNiftiImageIdsAndCacheMetadata, cornerstoneNiftiImageLoader } = niftiVolumeLoader;
 
 // Global variables
@@ -186,19 +186,24 @@ async function initializeCornerstone() {
         
         // Add tools
         addTool(BrushTool);
+        addTool(StackScrollMouseWheelTool);
         
         // Create tool group
         const toolGroupId = 'SEGMENTATION_TOOL_GROUP';
         toolGroup = ToolGroupManager.createToolGroup(toolGroupId);
         
-        // Add brush tool to tool group
+        // Add tools to tool group
         toolGroup.addTool(BrushTool.toolName);
+        toolGroup.addTool(StackScrollMouseWheelTool.toolName);
         
-        // Set brush tool as active
+        // Set brush tool active
         toolGroup.setToolActive(BrushTool.toolName, {
             bindings: [{ mouseButton: ToolEnums.MouseBindings.Primary }]
         });
-
+        
+        // Set stack scroll tool active for mouse wheel
+        toolGroup.setToolActive(StackScrollMouseWheelTool.toolName);
+        
         // Load the NIfTI volume
         await loadNIfTIVolume();
         
@@ -331,13 +336,16 @@ async function createViewport(volumeId, segmentationId) {
             [viewportId]
         );
         
-        // Add segmentation representation to viewport
-        await segmentation.addLabelmapRepresentationToViewportMap({
-            [viewportId]: [{
+        // Add segmentation representation to viewport using v4.x API
+        await segmentation.addSegmentationRepresentations(viewportId, [
+            {
                 segmentationId,
                 type: ToolEnums.SegmentationRepresentations.Labelmap
-            }]
-        });
+            }
+        ]);
+        
+        // Set the active segmentation
+        segmentation.setActiveSegmentationRepresentation(viewportId, segmentationId);
         
         // Render
         renderingEngine.render();
